@@ -1,0 +1,9 @@
+#include "resource.h"
+
+IDI_APP_ICON ICON "app.ico"
+IDR_STATS_PAGE RCDATA "stats.html"
+IDR_WV2_LOADER RCDATA "third_party/webview2/WebView2Loader.dll"
+IDR_FONT_NSC_400 RCDATA "fonts/sub/NotoSansSC-400.woff2"
+IDR_FONT_NSC_500 RCDATA "fonts/sub/NotoSansSC-500.woff2"
+IDR_FONT_NSC_600 RCDATA "fonts/sub/NotoSansSC-600.woff2"
+IDR_FONT_NSC_700 RCDATA "fonts/sub/NotoSansSC-700.woff2"

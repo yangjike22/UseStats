@@ -1,0 +1,26 @@
+# 构建产物
+*.exe
+*.o
+*.obj
+
+# 运行时数据（绝不进仓库）
+usage-*.json
+settings.json
+stats_debug.log
+wv2data/
+record/
+
+# 字体源文件与中间产物（仓库只保留内嵌所需的 4 个 woff2 子集）
+fonts/src/
+fonts/__pycache__/
+fonts/sub/*
+!fonts/sub/NotoSansSC-400.woff2
+!fonts/sub/NotoSansSC-500.woff2
+!fonts/sub/NotoSansSC-600.woff2
+!fonts/sub/NotoSansSC-700.woff2
+
+# 图标生成过程文件与旧图标备份
+icon_src/media-generation-*
+*.bak-*
+
+__pycache__/

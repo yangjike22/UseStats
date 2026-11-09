@@ -1,0 +1,4 @@
+#include "resource.h"
+
+// 记录程序只需图标（页面与 WebView2Loader 只在查看器里内嵌）
+IDI_APP_ICON ICON "app.ico"

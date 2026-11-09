@@ -1,0 +1,2066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电脑使用统计</title>
+<script>
+// 早期错误收集：主脚本出任何异常都先记下来并（在 WebView2 可用时）回传宿主写诊断日志，
+// 同时点亮页面顶部诊断条——页面绝不允许以整页空白的形式失败。
+window.__pageLog = [];
+window.__reportToHost = function (msg) {
+  window.__pageLog.push(String(msg));
+  try {
+    if (window.chrome && window.chrome.webview)
+      window.chrome.webview.postMessage("log:" + String(msg));
+  } catch (e) { /* 宿主不在场时静默 */ }
+};
+window.addEventListener("error", function (ev) {
+  var msg = (ev && ev.message) ? ev.message : "未知脚本错误";
+  window.__reportToHost("page-error: " + msg);
+  var bar = document.getElementById("diagbar");
+  if (bar) { bar.hidden = false; bar.textContent = "页面脚本异常：" + msg + "（可将程序目录的 stats_debug.log 发回排查）"; }
+});
+</script>
+<style>
+/* 内嵌字体（子集化 woff2，构建脚本 fonts/build_fonts.py）：离线可用，页面零网络请求；Noto Sans SC 走宿主本地供给（见 stats.cpp FontResourceHandler），IBM Plex Mono 为 data URI */
+@font-face{font-family:"Noto Sans SC";font-style:normal;font-weight:400;font-display:swap;src:url("https://usestats.local/fonts/NotoSansSC-400.woff2") format("woff2");}
+@font-face{font-family:"Noto Sans SC";font-style:normal;font-weight:500;font-display:swap;src:url("https://usestats.local/fonts/NotoSansSC-500.woff2") format("woff2");}
+@font-face{font-family:"Noto Sans SC";font-style:normal;font-weight:600;font-display:swap;src:url("https://usestats.local/fonts/NotoSansSC-600.woff2") format("woff2");}
+@font-face{font-family:"Noto Sans SC";font-style:normal;font-weight:700;font-display:swap;src:url("https://usestats.local/fonts/NotoSansSC-700.woff2") format("woff2");}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;src:url(data:font/woff2;base64,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) format("woff2");}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:700;font-display:swap;src:url(data:font/woff2;base64,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) format("woff2");}
+  /* ================= 设计体系 · 时间账单（2026-11-09 晚，Impeccable Operate 模式） =================
+     世界只借四样东西：字体、配色、密度、一个标志动作——布局、导航、控件全是
+     标准产品形态，界面先是一件趁手的工具，其次才有性格。
+     字体：正文/标题/标签统一 Noto Sans SC 一套字族（400/500/600/700 子集内嵌，
+     宿主本地供给）；等宽 IBM Plex Mono 只给纯数字与日期（轴标签、覆盖标注），
+     「X 小时 Y 分」这类中英混排文案一律走正文字族 + tabular 数字——等宽的
+     0.6em 字距会把混排文案撑超宽（2026-11-09 晚占比卡圆心/图例溢出即此因）。
+     字体不做装饰。页面零网络请求。
+     配色：Restrained 打底 + 一处 Committed——顶部导航带整带浸主题色（--band），
+     内容面回到干净的纸白/墨面；强调色 --a1 只给主操作、当前选中与焦点环；
+     状态色 --a2（记录中/已启用）；数据系列色 --data-fg/-bg/-ma 与强调色分工独立。
+     密度：账单式表格密度——汇总数字成一条「摘要带」（发丝线分隔，不装盒子），
+     排行用行线而非卡片，次级文字一律由墨色派生（--sub/--gray 已逐对验算 ≥4.5）。
+     标志动作：24 小时分布按「时刻表」的栏格节奏排布（栏线 + 基线轴 + 整点刻度）。
+     动效只表达状态（悬停检视、选中、记录脉冲），150–250ms；无入场编排。
+     主题仍为四套（classic/soft/dark/red），键名不变，只换色值与中文名：
+     账册蓝 / 晴蓝 / 墨黑 / 朱红。头像调色板在 JS 侧（THEMES.avatars），与主题色独立。 */
+  :root{ /* 账册蓝：深蓝带 + 冷纸面 */
+    color-scheme:light;
+    --fs-display:32px; --fs-stat:28px; --fs-section:20px;
+    --fs-body:15px; --fs-meta:13px;
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --r-card:14px; --r-btn:10px; --r-sm:7px; --r-bar:999px;
+    --font-sans:"Noto Sans SC","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --font-num:"IBM Plex Mono","Noto Sans SC",Consolas,monospace;
+    --ink:#171A21; --bg:#F2F3F5; --panel:#FFFFFF; --panel2:#EBEDF1; --track:#DFE3EA;
+    --band:#1E3A9E; --band-ink:#FFFFFF; --band-dim:#B7C5F2;
+    --a1:#2B4BD8; --a2:#1E7A46; --a3:#7A4FD0;
+    --a1-ink:#FFFFFF; --a2-ink:#FFFFFF; --a2-soft:#3E7D54;
+    --a1-soft:#DCE3FA; --a1-deep:#1D3496;
+    --data-fg:#2E7D4F; --data-bg:#75808F; --data-ma:#C77400;
+    --ctl-h:34px;
+    --gray:#4A5162; --sub:#3B4252; --line:#D8DCE3;
+    --hair:rgba(23,26,33,.10);
+    --danger:#C62F3B;
+    --sh-card:0 1px 2px rgba(23,26,43,.05),0 12px 32px -20px rgba(23,26,43,.30);
+    --sh-pop:0 2px 6px rgba(23,26,43,.12),0 16px 36px -16px rgba(23,26,43,.35);
+  }
+  :root[data-theme="soft"]{ /* 晴蓝：钢蓝带 + 晴空纸面 */
+    color-scheme:light;
+    --ink:#17222C; --bg:#EDF2F6; --panel:#FFFFFF; --panel2:#E1EAF1; --track:#D2DFEA;
+    --band:#2F6BA3; --band-ink:#FFFFFF; --band-dim:#C6DCEE;
+    --a1:#2563B8; --a2:#1E7A46; --a3:#6D5BD0;
+    --a1-ink:#FFFFFF; --a2-ink:#FFFFFF; --a2-soft:#3E7D54;
+    --a1-soft:#D5E5F6; --a1-deep:#1B4A8C;
+    --data-fg:#2E7D4F; --data-bg:#5F7A90; --data-ma:#BC6200;
+    --gray:#3D5064; --sub:#374854; --line:#CBD8E2;
+    --hair:rgba(23,34,44,.10);
+    --danger:#C62F3B;
+  }
+  :root[data-theme="dark"]{ /* 墨黑：近黑带 + 墨面 */
+    color-scheme:dark;
+    --ink:#ECEEF2; --bg:#141519; --panel:#1D1E23; --panel2:#26272E; --track:#2E2F36;
+    --band:#0D0E12; --band-ink:#FFFFFF; --band-dim:#9AA3B2;
+    --a1:#7C97FF; --a2:#4CC38A; --a3:#B79CFF;
+    --a1-ink:#0D1330; --a2-ink:#0B2417; --a2-soft:#4C9A6C;
+    --a1-soft:#2A3560; --a1-deep:#A9BCFF;
+    --data-fg:#45B97C; --data-bg:#8B93A3; --data-ma:#F0A13C;
+    --gray:#B0B8C6; --sub:#C3C9D4; --line:#33343B;
+    --hair:rgba(236,238,242,.11);
+    --danger:#D92D20;
+    --sh-card:0 1px 2px rgba(0,0,0,.4),0 12px 32px -20px rgba(0,0,0,.7);
+    --sh-pop:0 2px 6px rgba(0,0,0,.5),0 16px 36px -16px rgba(0,0,0,.8);
+  }
+  :root[data-theme="red"]{ /* 朱红：朱红带 + 暖纸面 */
+    color-scheme:light;
+    --ink:#221A16; --bg:#F6F1EC; --panel:#FFFDFB; --panel2:#F0E7DD; --track:#E6D8CB;
+    --band:#AE3520; --band-ink:#FFFFFF; --band-dim:#F3CDBD;
+    --a1:#AE3520; --a2:#1E7A46; --a3:#8A4FA3;
+    --a1-ink:#FFFFFF; --a2-ink:#FFFFFF; --a2-soft:#3E7D54;
+    --a1-soft:#F5DCD1; --a1-deep:#8A2817;
+    --data-fg:#2E7D4F; --data-bg:#8A7663; --data-ma:#BC6200;
+    --gray:#5D4A3E; --sub:#4A3A30; --line:#DFCFC0;
+    --hair:rgba(34,26,22,.10);
+    --danger:#C62F3B;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:var(--bg);}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--font-sans); font-size:var(--fs-body); line-height:1.6;
+    font-variant-numeric:tabular-nums;
+  }
+  /* 视觉隐藏（读屏专用文本，如排行行的文字版摘要） */
+  .vh{position:absolute!important; width:1px; height:1px; overflow:hidden;
+    clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;}
+  ::selection{background:var(--a1-soft); color:var(--ink);}
+  ::-webkit-scrollbar{width:10px; height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:var(--r-bar);}
+  ::-webkit-scrollbar-track{background:transparent;}
+  button{font:inherit;}
+  button:focus-visible, input:focus-visible, [tabindex]:focus-visible{
+    outline:2px solid var(--a1); outline-offset:2px;}
+  .switch input:focus-visible + .sl{outline:2px solid var(--a1); outline-offset:2px;}
+  .page[hidden]{display:none;}
+  main{max-width:1000px; margin:0 auto; padding:20px 20px 44px;}
+  /* ---------- 顶部导航带（整带浸主题色：全页唯一的大面积承诺色） ---------- */
+  .pagenav{
+    position:sticky; top:0; z-index:20;
+    background:var(--band); color:var(--band-ink);
+    padding:8px max(20px, calc(50% - 480px)) 0;
+    box-shadow:0 10px 24px -18px rgba(10,12,30,.55);
+  }
+  .pagenav .brandrow{display:flex; align-items:center; gap:var(--sp-3);}
+  .pagenav .brand{
+    display:inline-flex; align-items:center; gap:10px;
+    font-size:16px; font-weight:700; letter-spacing:.14em; color:var(--band-ink);
+  }
+  /* 品牌标记：一枚白色菱形（记录点），与状态点同语系 */
+  .pagenav .brand .dia{width:11px; height:11px; flex:none;
+    background:var(--band-ink); border-radius:2.5px; transform:rotate(45deg);}
+  /* ---------- 窗口控制钮（macOS 三色 + Windows 的位序与字形）：宿主已无边框，
+     三钮由页面绘制、经 WebMessage 让宿主执行最小化/最大化/收起；位置在右上
+     角、顺序按 Windows 惯例 最小化→最大化→关闭（红钮压最右）。钮面为圆角
+     长方形 27×20（圆角 6px）、命中区 36×30——比圆点宽、更好点；符号只在整组
+     悬停时浮现，窗口失焦时整组转灰（html[data-winfocus] 由 wireWindowChrome
+     维护）。最大化钮的字形跟 Windows 走：窗口态是单个小方框，最大化后换成
+     还原的双框（html[data-winmax] 同样由 wireWindowChrome 维护） ---------- */
+  .pagenav{user-select:none; -webkit-user-select:none;}
+  .winlights{display:inline-flex; align-items:center; gap:4px; flex:none; margin-left:auto;}
+  .wl{width:36px; height:28px; border:0; padding:0; cursor:pointer; background:transparent;
+    display:inline-flex; align-items:center; justify-content:center;}
+  .wl .dt{width:27px; height:20px; border-radius:6px; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    box-shadow:inset 0 0 0 .5px rgba(0,0,0,.22), inset 0 -2px 3px rgba(0,0,0,.14), inset 0 1px 1px rgba(255,255,255,.38);
+    transition:filter .15s ease;}
+  .wl svg{width:12px; height:12px; opacity:0; transition:opacity .15s ease; display:block;}
+  /* 最大化钮双字形：默认小方框（最大化），最大化后只显示双框（还原） */
+  .wl-zoom .ic-restore{display:none;}
+  html[data-winmax="on"] .wl-zoom .ic-restore{display:block;}
+  html[data-winmax="on"] .wl-zoom .ic-max{display:none;}
+  .winlights:hover .wl svg{opacity:1;}
+  .wl:active .dt{filter:brightness(.82);}
+  .wl:focus-visible{outline:none;}
+  .wl:focus-visible .dt{outline:2px solid var(--band-ink); outline-offset:2px;}
+  .wl-close .dt{background:#FF5F57;} .wl-min .dt{background:#FEBC2E;} .wl-zoom .dt{background:#28C840;}
+  .wl path{stroke:rgba(0,0,0,.52); stroke-width:1.2; stroke-linecap:round; fill:none;}
+  html[data-winfocus="off"] .wl .dt{background:#C3C8CF;
+    box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14), inset 0 -2px 3px rgba(0,0,0,.08), inset 0 1px 1px rgba(255,255,255,.3);}
+  html[data-winfocus="off"] .winlights:hover .wl svg{opacity:0;}
+  /* ---------- 窗口缩放手柄（页面侧）：宿主的 WM_NCHITTEST 被 WebView 子窗口
+     盖住、到不了（真机实证），改由页面在四边/四角铺 5px/12px 透明手柄，
+     pointerdown 经 win:resize 让宿主进系统缩放回路；光标形状由 CSS 给。
+     最大化时宿主回传 win-state，html[data-winmax="on"] 隐藏全部手柄 -- */
+  .rz{position:fixed; z-index:90;}
+  .rz-t{top:0; left:14px; right:14px; height:5px; cursor:ns-resize;}
+  .rz-b{bottom:0; left:14px; right:14px; height:5px; cursor:ns-resize;}
+  .rz-l{left:0; top:14px; bottom:14px; width:5px; cursor:ew-resize;}
+  .rz-r{right:0; top:14px; bottom:14px; width:5px; cursor:ew-resize;}
+  .rz-tl{top:0; left:0; width:14px; height:14px; cursor:nwse-resize;}
+  .rz-tr{top:0; right:0; width:14px; height:14px; cursor:nesw-resize;}
+  .rz-bl{bottom:0; left:0; width:14px; height:14px; cursor:nesw-resize;}
+  .rz-br{bottom:0; right:0; width:14px; height:14px; cursor:nwse-resize;}
+  html[data-winmax="on"] .rz{display:none;}
+  .pagenav .tnav{display:flex; align-items:center; gap:2px; margin-top:5px;}
+  .pagenav .tnav button{
+    border:0; background:transparent; color:var(--band-dim); font-size:var(--fs-body);
+    padding:6px 14px 8px; cursor:pointer; min-height:36px; border-radius:8px 8px 0 0;
+    box-shadow:inset 0 -3px 0 transparent;
+    transition:background .18s ease,color .18s ease,box-shadow .18s ease;}
+  .pagenav .tnav button:hover{color:var(--band-ink); background:rgba(255,255,255,.08);}
+  .pagenav .tnav button:focus-visible{outline:2px solid var(--band-ink); outline-offset:-2px;}
+  /* 选中态：白字 + 底部白线（导航就该读作导航） */
+  .pagenav .tnav button.on{color:var(--band-ink); font-weight:600;
+    box-shadow:inset 0 -3px 0 var(--band-ink);}
+  /* ---------- 顶部状态条（记录中 · 今日使用最多） ---------- */
+  .livebar{
+    display:flex; align-items:center; gap:var(--sp-2);
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-card);
+    box-shadow:var(--sh-card);
+    padding:9px var(--sp-4); margin-bottom:var(--sp-4);
+    font-size:var(--fs-meta); color:var(--sub);
+  }
+  .livebar .dot{width:9px; height:9px; border-radius:50%; background:var(--a2); flex:none;
+    animation:pulse 1.8s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .livebar b{color:var(--ink); font-weight:600; font-size:var(--fs-body);}
+  .livebar .fg{margin-left:auto; color:var(--sub); white-space:nowrap;}
+  .livebar .fg b{color:var(--ink); font-family:var(--font-num); font-weight:700; font-size:var(--fs-body);}
+  /* ---------- 主标题（账单抬头：粗规则线收尾，不装盒子） ---------- */
+  .hero{padding:10px 2px 16px; border-bottom:2px solid var(--ink); margin-bottom:var(--sp-4);}
+  .hero h1{font-size:30px; font-weight:700; line-height:1.25; letter-spacing:.01em;
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;}
+  /* 英文缀与主标题同行同基线（不是标题上方的眉题），小字距的安静标注 */
+  .hero h1 .h1en{font-size:12px; font-weight:500; letter-spacing:.22em; color:var(--sub);}
+  .hero .sub{margin-top:5px; font-size:var(--fs-meta); color:var(--sub);}
+  /* ---------- 主题切换（设置页内；选中 = 强调描边 + 浅染底） ---------- */
+  .themes{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2);}
+  .theme-btn{
+    display:inline-flex; align-items:center; gap:var(--sp-2);
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-btn);
+    color:var(--sub); font-size:var(--fs-body);
+    padding:var(--sp-2) var(--sp-3); min-height:var(--ctl-h); cursor:pointer;
+    transition:border-color .18s ease,background .18s ease,color .18s ease;}
+  .theme-btn:hover{color:var(--ink); border-color:var(--gray);}
+  .theme-btn .tsw{width:11px; height:11px; border-radius:50%; flex:none;}
+  .theme-btn.on{color:var(--a1-deep); background:var(--a1-soft); border-color:var(--a1);
+    font-weight:600;}
+  /* ---------- 卡片（干净内容面：发丝线 + 带偏移的柔和投影） ---------- */
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-card);
+    box-shadow:var(--sh-card);
+    padding:20px 22px; margin-bottom:var(--sp-4);
+  }
+  .card h2{
+    font-size:17px; font-weight:700; line-height:1.35; letter-spacing:.01em;
+    margin-bottom:var(--sp-4);
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+  }
+  .card h2 .en{font-size:11px; font-weight:500; letter-spacing:.08em; color:var(--gray);}
+  /* 图表标题旁的覆盖标注：时间范围 + 已记录天数，靠右贴边、辅助档、等宽数字 */
+  .card h2 .cov{margin-left:auto; font-family:var(--font-num); font-size:var(--fs-meta); color:var(--sub); white-space:nowrap;}
+  /* 平均区（第三层：与其他日期对比）：安静的浅染砖，数字一律墨色 */
+  .avg-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:var(--sp-3);}
+  .avg{background:var(--panel2); border-radius:var(--r-btn); padding:var(--sp-3) var(--sp-4);}
+  .avg .a-label{font-size:var(--fs-meta); color:var(--sub);}
+  .avg .a-num{font-family:var(--font-num); font-size:var(--fs-stat); font-weight:700; line-height:1.2; color:var(--ink); margin-top:var(--sp-1);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .note{font-size:var(--fs-meta); color:var(--sub); margin-top:var(--sp-3); line-height:1.75;}
+  /* 数据积累不足时的轻量提示：浅染底 + 辅助档文字，不抢图表 */
+  .hint{font-size:var(--fs-meta); color:var(--sub); background:var(--panel2);
+    border-radius:var(--r-btn); padding:var(--sp-2) var(--sp-3); margin-top:var(--sp-3); line-height:1.65;}
+  /* 均值卡的计算范围注脚：把「按已记录天数算」贴到数字旁边，不再让用户去页脚找口径 */
+  .avg .a-sub{font-size:12px; color:var(--sub); margin-top:3px; line-height:1.55;}
+  /* 图表页顶部的数据覆盖横幅：覆盖数字用粗体墨色，覆盖不足时左边框换琥珀色警示 */
+  .covbar{display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--a2);
+    border-radius:var(--r-card); box-shadow:var(--sh-card);
+    padding:10px 16px; margin-bottom:var(--sp-4); font-size:var(--fs-body); color:var(--sub);}
+  .covbar.warn{border-left-color:var(--data-ma);}
+  .covbar b{color:var(--ink); font-family:var(--font-num); font-weight:700;}
+  .covbar strong{color:var(--ink);}
+  /* 排行榜「展开全部」行：默认只展示前 5 名，按钮居中安静呈现 */
+  .rank-more{display:flex; justify-content:center; padding-top:var(--sp-3);}
+  /* 设置保存的浮层反馈：改动落盘后短暂出现，区分「已保存」与「已生效」 */
+  .savetoast{position:fixed; left:50%; bottom:26px; z-index:95;
+    transform:translateX(-50%) translateY(10px); opacity:0; pointer-events:none;
+    background:var(--ink); color:var(--bg); font-size:var(--fs-body); font-weight:500;
+    padding:9px 18px; border-radius:999px; box-shadow:var(--sh-pop);
+    transition:opacity .25s ease, transform .25s ease; max-width:88vw; text-align:center;}
+  .savetoast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  .savetoast.err{background:var(--danger); color:#FFFFFF;}
+  /* 设置页可折叠分组（工具类默认收起）：标题行整行可点，箭头随展开旋转 */
+  .fold-head{cursor:pointer;}
+  .fold-head .fold-chev{margin-left:auto; font-size:13px; color:var(--sub); transition:transform .2s ease;}
+  .fold-head[aria-expanded="true"] .fold-chev{transform:rotate(180deg);}
+  /* ---------- 工具栏（总览详情卡顶部单行：日期 · 时段页签 · 数据状态） ---------- */
+  .toolbar{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;
+    padding-bottom:var(--sp-3); margin-bottom:var(--sp-4); border-bottom:1px solid var(--line);}
+  .toolbar .tb-date{font-size:var(--fs-body); font-weight:600; color:var(--ink); white-space:nowrap;}
+  .toolbar .tb-status{margin-left:auto; font-family:var(--font-num); font-size:var(--fs-meta); color:var(--sub); white-space:nowrap;}
+  /* ---------- 分段页签（标准 segmented：浅轨 + 白色选中片） ---------- */
+  .tabs{display:inline-flex; background:var(--panel2); border-radius:var(--r-btn);
+    padding:3px; gap:2px;}
+  .tabs button{
+    border:0; background:transparent; color:var(--sub); font-size:var(--fs-body);
+    padding:5px 14px; border-radius:var(--r-sm); cursor:pointer; min-height:var(--ctl-h);
+    transition:background .18s ease,color .18s ease,box-shadow .18s ease;}
+  .tabs button:hover{color:var(--ink);}
+  .tabs button.on{background:var(--panel); color:var(--ink); font-weight:600;
+    box-shadow:0 1px 3px rgba(20,22,40,.16);}
+  /* ---------- 摘要带（四个关键数字：一条带、发丝线分隔，数字同字号同字重） ---------- */
+  .blocks{display:grid; grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--line); border-radius:var(--r-btn); overflow:hidden;
+    margin-bottom:var(--sp-5);}
+  .block{padding:13px 18px 12px; display:flex; flex-direction:column; min-width:0;}
+  .block + .block{border-left:1px solid var(--line);}
+  .block .b-label{font-size:var(--fs-meta); color:var(--sub);}
+  /* 四个数字严格同档（26px 等宽粗体）——大小一致是扫读的前提，总时长只借标签色区分 */
+  .block .b-num{font-family:var(--font-num); font-size:26px; font-weight:700; line-height:1.3; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .block.k1 .b-label{color:var(--a1-deep); font-weight:600;}
+  .block .b-sub{font-size:var(--fs-meta); color:var(--sub); line-height:1.55;}
+  /* ---------- 柱图（时刻表栏格：栏线 + 基线轴；总览与图表页共用） ---------- */
+  .chart{display:flex; align-items:flex-end; gap:0; height:108px; padding-top:var(--sp-3);
+    border-bottom:2px solid var(--line);}
+  .col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+    height:100%; min-width:0; border-left:1px solid var(--hair);}
+  .col:first-child{border-left:none;}
+  .col .val{font-family:var(--font-num); font-size:12px; color:var(--sub); margin-bottom:var(--sp-1); white-space:nowrap; min-height:22px;}
+  /* 峰值只用字重与墨色强调（主色只给选中态与重点数字） */
+  .col .val.pk{font-weight:700; color:var(--ink);}
+  .col .bar{width:72%; max-width:30px; min-height:2px;
+    background:var(--data-fg); border-radius:3px 3px 0 0;
+    transition:height .3s ease, background .15s ease;}
+  .col:hover .bar{background:var(--data-ma);}
+  /* 无记录槽位：虚线空槽，与「记录为 0」的实心矮柱明确区分 */
+  .col .bar.slot{background:transparent; border:1.5px dashed var(--line); border-bottom:none; min-height:0;}
+  .col .val.miss{color:var(--sub);}
+  .col .lab{font-size:12px; font-family:var(--font-num); color:var(--sub); margin-top:var(--sp-1); white-space:nowrap; min-height:22px;}
+  /* 星期图里周末走标签字重+墨色，柱色与其它日子一致 */
+  .col .lab.wk{color:var(--ink); font-weight:700;}
+  .chart-wrap{margin-bottom:var(--sp-2);}
+  /* ---------- 排行榜（账单行线：行线分隔、悬停浅染；五列 grid 模板不变） ---------- */
+  .legend{font-size:var(--fs-meta); color:var(--sub); font-weight:400;}
+  .legend .sw{display:inline-block; width:9px; height:9px; border-radius:3px; margin:0 4px 0 8px;}
+  .legend .sw.fg{background:var(--data-fg);} .legend .sw.bgo{background:var(--data-bg);}
+  .rank{list-style:none;}
+  /* 列宽优先级（2026-11-09 用户定）：应用名 > 占比条 > 其余定宽列。
+     名字列 minmax(200px, 360px)：先长到 360 为止——真实应用名几乎都在
+     300px 内能完整显示，超长的多是无关紧要的系统服务名，截断即可（名字
+     span 带全名 title 可悬停查看）；占比条 minmax(100px, 1fr)：窗口拉伸
+     的余量主要由它吸收，变宽变窄都先动它，下限 100 保证比例还读得出；
+     后台文案/时长/占比三列定宽右对齐不变。旧版名字 1fr + 条带定宽 168px，
+     窗口一窄名字先被挤没，故废。
+     2026-11-09 晚补：各列下限之和（620px）曾大于高 DPI 下的实际 CSS 行宽
+     （窗口物理宽很大、CSS 宽却只有六百多），grid 压无可压时把占比列整列
+     挤出行外——文字脱离行底线、浮在卡片右边距上（真机截图实证，本地用
+     同数据同宽复现：占比列右缘超出行右缘 36px）。修法只动可压缩的两列：
+     名字下限 200→120、条下限 100→60，下限之和降到 500；后台/时长/占比
+     三列定宽不动，右对齐的两条竖线不弯。空间再紧时先压条到下限、再压
+     名字（与上面的优先级一致），宽窗口下各列取值与原来完全一致。 */
+  .rrow{display:grid; grid-template-columns:minmax(120px, 360px) minmax(60px, 1fr) 120px 108px 44px;
+    align-items:center; column-gap:var(--sp-3);
+    padding:9px 10px; border-bottom:1px solid var(--hair); border-radius:6px;
+    transition:background .15s ease;}
+  .rrow:last-child{border-bottom:none;}
+  .rrow:hover{background:var(--panel2);}
+  /* 第一列是身份组：名次 + 头像 + 名称在格内排布，名称过长截断在本格内 */
+  .r-id{display:flex; align-items:center; gap:var(--sp-3); min-width:0;}
+  .rn{flex:none; font-family:var(--font-num); font-size:var(--fs-meta); color:var(--sub); min-width:22px;}
+  /* 头像：应用身份色圆片 + 白/深字母（JS 内联样式），尺寸统一 22px */
+  .avatar{flex:none; width:22px; height:22px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700;}
+  .r-name{flex:1; min-width:0; font-size:var(--fs-body);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* 数据条：宽度 = 所在 grid 轨道的 100%（弹性轨道，下限 100px），前台/后台两段在轨道内按比例拼接 */
+  .r-bar{width:100%; height:8px; border-radius:var(--r-bar);
+    background:var(--track); overflow:hidden; display:flex;}
+  .r-bar .bf{display:block; height:100%; background:var(--data-fg);}
+  .r-bar .bb{display:block; height:100%; background:var(--data-bg);}
+  /* 后台时长短文案：定宽 120px 列、右对齐，超长只在本列内省略 */
+  .r-bg{font-size:var(--fs-meta); color:var(--sub); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; text-align:right;}
+  /* 时长列定宽 108px、占比列定宽 44px（均由 grid 模板决定），右对齐成两条竖线 */
+  .r-time{font-family:var(--font-num); text-align:right; font-size:var(--fs-body); font-weight:700; white-space:nowrap;}
+  .r-pct{font-family:var(--font-num); text-align:right; font-size:var(--fs-body); color:var(--sub);}
+  .empty{color:var(--sub); font-size:var(--fs-body); padding:var(--sp-2) 0 var(--sp-1);}
+  footer{font-size:var(--fs-meta); color:var(--sub); text-align:center; padding:var(--sp-2) 0;}
+  /* ---------- 图表页（2×2 同屏网格） ---------- */
+  /* 页脚口径说明（窗口范围 + 已记录天数 + 平均口径），置于图表页最底端 */
+  .charts-intro{
+    font-size:var(--fs-meta); color:var(--sub); line-height:1.7;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-card);
+    box-shadow:var(--sh-card); padding:var(--sp-3) var(--sp-4); margin-top:var(--sp-4);
+  }
+  .chart-grid{display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-4);}
+  .chart-grid .card{margin-bottom:0; display:flex; flex-direction:column; padding:18px 20px;}
+  .chart-grid .card h2{margin-bottom:var(--sp-2);}
+  /* 图形在卡内居中：图体容器吃掉标题与注解之间的全部剩余高度并垂直居中 */
+  .chart-grid .chart-wrap{flex:1 1 auto; display:flex; align-items:center; margin-bottom:0;}
+  .chart-grid .chart-wrap .chart{width:100%;}
+  .chart-grid .chartbox{flex:1 1 auto; display:flex; align-items:center;}
+  .chart-grid .svgbox{width:100%;}
+  .chart-grid .share-flex{flex:1 1 auto; justify-content:center;}
+  #page-charts .chart{height:124px;}
+  /* 同行两卡的说明文字沉到底部对齐 */
+  .chart-grid .card .note{margin-top:auto; padding-top:var(--sp-3);}
+  .svgbox{width:100%;}
+  .svgbox svg{display:block; width:100%; height:auto;}
+  /* 趋势图轴文字是纯数字/日期，走等宽；环图圆心是「20 小时 13 分」这类中英混排
+     文案，等宽会把数字与空格都撑到 0.6em/字、整串超宽溢出圆心——走正文字族，
+     数字靠全站 tabular-nums 保持等宽对齐（见 .share-legend 同理） */
+  #trendChart text{font-family:var(--font-num);}
+  #shareChart text{font-family:var(--font-sans);}
+  /* 趋势检视：十字引导线 + 数据点（JS 挂载，悬停时淡入） */
+  #trendChart .tguide{stroke:var(--gray); stroke-width:1; stroke-dasharray:3 3; opacity:0; transition:opacity .15s ease;}
+  #trendChart .tdot{fill:var(--panel); stroke:var(--data-ma); stroke-width:2.5; opacity:0; transition:opacity .15s ease;}
+  /* 趋势悬停信息签：墨底白字的小签，锚在数据点上方（HTML 层，不进 SVG） */
+  .chartbox{position:relative; width:100%;}
+  .charttip{
+    position:absolute; top:2px; transform:translateX(-50%);
+    background:var(--ink); color:var(--bg);
+    font-size:12.5px; line-height:1.45; padding:6px 10px; border-radius:8px;
+    box-shadow:var(--sh-pop); pointer-events:none; white-space:nowrap; z-index:6;}
+  .charttip b{font-family:var(--font-num); font-weight:700;}
+  .charttip .tm{display:block; opacity:.75; font-size:11.5px;}
+  /* 环图扇区悬停：沿径向弹出 + 加粗，JS 只切 transform/属性，反馈走 CSS 过渡 */
+  #shareChart .seg{transition:transform .18s ease-out;}
+  #shareChart .seg circle{transition:opacity .15s ease;}
+  .share-flex{display:flex; align-items:center; gap:var(--sp-3); flex-wrap:wrap;}
+  #shareChart svg{display:block; width:160px; height:160px;}
+  .share-legend{list-style:none; flex:1; min-width:190px;}
+  /* 图例行走 grid 定列（色点 | 应用名弹性列 | 时长 | 占比定宽右对齐），与排行行
+     同一套账单式对齐；名列吃满剩余宽度后才省略，不再被时长文案挤压 */
+  .share-legend li{display:grid; grid-template-columns:10px minmax(0,1fr) auto 42px;
+    align-items:center; gap:var(--sp-2); padding:7px 6px;
+    font-size:var(--fs-body); border-radius:var(--r-btn); border-bottom:1px solid var(--hair);
+    transition:background .15s ease;}
+  .share-legend li:last-child{border-bottom:none;}
+  /* 图例与图块悬停联动：命中行浅染强调底 */
+  .share-legend li.hot{background:var(--a1-soft);}
+  .share-legend .lg-dot{width:10px; height:10px; border-radius:50%;}
+  .share-legend .lg-name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* 时长/占比是中英混排文案而非纯数字：走正文字族 + tabular 数字；等宽时
+     「8 小时 3 分 · 40%」约 144px，正文族约 105px，省下的宽度还给应用名列 */
+  .share-legend .lg-val{color:var(--sub); white-space:nowrap; text-align:right;}
+  .share-legend .lg-pct{color:var(--sub); white-space:nowrap; text-align:right;}
+  /* ---------- 设置页（双列） ---------- */
+  /* 设置页用双栏流式排布（CSS columns）：卡片按栏自上而下紧排、浏览器自动
+     均衡两栏高度，不再像 grid 那样被同行最高卡片撑出行高、留下整块空白 */
+  .set-grid{columns:2; column-gap:var(--sp-4);}
+  .set-grid .card{margin-bottom:var(--sp-4); break-inside:avoid;}
+  /* 设置行用行线做行间引导；控件列靠 space-between 贴右成一条竖线 */
+  .set-row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-4);
+    padding:11px 2px; border-bottom:1px solid var(--hair);}
+  .set-row:last-child{border-bottom:none;}
+  .set-row .s-main{flex:1; min-width:0;}
+  .set-row .s-label{font-size:var(--fs-body); font-weight:500;}
+  .set-row .s-desc{font-size:var(--fs-meta); color:var(--sub); margin-top:2px; line-height:1.7;}
+  .seg{display:inline-flex; background:var(--panel2); border-radius:var(--r-btn);
+    padding:3px; gap:2px; flex:none;}
+  .seg button{
+    border:0; background:transparent; color:var(--sub); font-size:var(--fs-body);
+    padding:5px 12px; border-radius:var(--r-sm); cursor:pointer; min-height:var(--ctl-h);
+    transition:background .18s ease,color .18s ease,box-shadow .18s ease;}
+  .seg button:hover{color:var(--ink);}
+  .seg button.on{background:var(--panel); color:var(--ink); font-weight:600;
+    box-shadow:0 1px 3px rgba(20,22,40,.16);}
+  /* 文本/数字输入与下拉：标准控件形态，焦点环走 --a1 */
+  .set-row input[type="text"], .set-row input[type="number"], .set-row select{
+    font:inherit; color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-radius:var(--r-sm);
+    min-height:var(--ctl-h); padding:4px 10px;}
+  .set-row input[type="text"]:hover, .set-row input[type="number"]:hover, .set-row select:hover{border-color:var(--gray);}
+  /* 开关：命中区 44×32，胶囊轨道 + 白钮（柔和投影），开启态 = 状态绿（位置 + 颜色双通道） */
+  .switch{position:relative; width:44px; height:var(--ctl-h); flex:none; display:inline-block;}
+  .switch input{opacity:0; width:100%; height:100%; position:absolute; inset:0; margin:0; cursor:pointer;}
+  .switch .sl{position:absolute; left:0; right:0; top:4px; height:24px; background:var(--track); border-radius:999px;
+    cursor:pointer; transition:background .18s ease;}
+  .switch .sl:before{content:""; position:absolute; width:18px; height:18px; left:3px; top:3px;
+    border-radius:50%; background:#FFFFFF; box-shadow:0 1px 3px rgba(20,22,40,.30);
+    transition:transform .18s ease;}
+  .switch input:checked + .sl{background:var(--a2);}
+  .switch input:checked + .sl:before{transform:translateX(20px);}
+  /* 主按钮：强调色实底（全站主操作同一副面孔），悬停提亮、按下回落 */
+  .gbtn{
+    border:1px solid transparent; background:var(--a1); color:var(--a1-ink); border-radius:var(--r-btn);
+    font-size:var(--fs-body); font-weight:600; padding:var(--sp-2) var(--sp-4); min-height:38px; cursor:pointer;
+    transition:filter .18s ease, transform .12s ease;}
+  .gbtn:hover{filter:brightness(1.07);}
+  .gbtn:active{transform:translateY(1px);}
+  .data-line{font-size:var(--fs-body); color:var(--sub); line-height:1.75; word-break:break-all;}
+  /* 数据目录路径：等宽字体 + 浅染底块，一眼能找到、好选中 */
+  .data-path{
+    background:var(--panel2); border-radius:var(--r-btn);
+    padding:var(--sp-2) var(--sp-3); margin:var(--sp-1) 0 var(--sp-2);
+    font-family:var(--font-num); font-size:13px; color:var(--ink);
+    word-break:break-all; line-height:1.6;
+  }
+  .btn-row{display:flex; gap:var(--sp-2); flex-wrap:wrap; margin-top:var(--sp-3);}
+  #saveHint{font-size:var(--fs-body); color:var(--sub);}
+  .savebar{display:flex; align-items:center; gap:var(--sp-2); margin-bottom:var(--sp-4);
+    background:var(--a1-soft); border-radius:var(--r-btn); padding:var(--sp-3) var(--sp-4);}
+  .savebar .dia{width:8px; height:8px; border-radius:50%; background:var(--a2); flex:none;}
+  .savebar #saveHint{color:var(--a1-deep); font-weight:500;}
+  /* ---------- 诊断条与无数据状态 ---------- */
+  #diagbar{
+    background:var(--danger); color:#fff; padding:var(--sp-3) var(--sp-4);
+    font-size:var(--fs-body); margin-bottom:var(--sp-4); border-radius:var(--r-btn);
+  }
+  .nodata{
+    padding:var(--sp-6); text-align:center; color:var(--sub); margin-bottom:var(--sp-4);
+    background:var(--panel); border:1.5px dashed var(--line); border-radius:var(--r-card);}
+  .nodata .nd-title{font-size:var(--fs-section); font-weight:700; color:var(--ink); margin-bottom:var(--sp-2);}
+  .nodata .nd-sub{font-size:var(--fs-meta); color:var(--sub); line-height:1.65;}
+  /* ---------- 窄窗回落 ---------- */
+  @media (max-width:920px){
+    .chart-grid{grid-template-columns:1fr;}
+    .set-grid{columns:1;}
+    .blocks{grid-template-columns:repeat(2,1fr);}
+    .block:nth-child(3){border-left:none;}
+    .block:nth-child(n+3){border-top:1px solid var(--line);}
+  }
+  @media (max-width:600px){
+    .avg-grid{grid-template-columns:1fr;}
+    main{padding:14px 12px 32px;}
+    .hero h1{font-size:26px;}
+    /* 窄屏：后台文案列整列撤下，grid 模板同步改四列；列宽优先级与桌面端
+       同一逻辑——名字优先、条带弹性吸收；下限同样压低（100/48），保证
+       极窄时占比列也不出行外（与桌面端 2026-11-09 的修法一致） */
+    .rrow{grid-template-columns:minmax(100px, 280px) minmax(48px, 1fr) 84px 36px;}
+    .r-bg{display:none;}
+    .toolbar .tb-status{margin-left:0;}
+    .pagenav{padding-left:12px; padding-right:12px;}
+  }
+  /* ---------- 减少动态偏好：关全部动画与过渡 ---------- */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{animation:none!important; transition:none!important;}
+  }
+</style>
+</head>
+<body>
+<div id="diagbar" role="alert" hidden></div>
+
+<nav class="pagenav" id="pageNav">
+  <div class="brandrow">
+    <span class="brand"><span class="dia" aria-hidden="true"></span>USESTATS</span>
+    <div class="winlights" role="group" aria-label="窗口控制">
+      <button type="button" class="wl wl-min" id="winMin" aria-label="最小化" title="最小化"><span class="dt"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.2 5 L7.8 5"/></svg></span></button>
+      <button type="button" class="wl wl-zoom" id="winZoom" aria-label="最大化或还原" title="最大化 / 还原"><span class="dt"><svg class="ic-max" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.7 2.7 L7.3 2.7 L7.3 7.3 L2.7 7.3 Z"/></svg><svg class="ic-restore" viewBox="0 0 10 10" aria-hidden="true"><path d="M5.2 2.4 L7.6 2.4 L7.6 4.8 M2.4 4.4 L6.8 4.4 L6.8 8.6 L2.4 8.6 Z"/></svg></span></button>
+      <button type="button" class="wl wl-close" id="winClose" aria-label="关闭窗口（收起到托盘）" title="关闭（收起到托盘）"><span class="dt"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.6 2.6 L7.4 7.4 M7.4 2.6 L2.6 7.4"/></svg></span></button>
+    </div>
+  </div>
+  <div class="tnav" role="tablist" aria-label="页面切换">
+    <button type="button" role="tab" id="tab-overview" data-page="overview" class="on" aria-selected="true" aria-controls="page-overview">总览</button>
+    <button type="button" role="tab" id="tab-charts" data-page="charts" aria-selected="false" aria-controls="page-charts" tabindex="-1">图表</button>
+    <button type="button" role="tab" id="tab-settings" data-page="settings" aria-selected="false" aria-controls="page-settings" tabindex="-1">设置</button>
+  </div>
+</nav>
+
+<main>
+<!-- ============ 总览页 ============ -->
+<div class="page" id="page-overview" role="tabpanel" aria-labelledby="tab-overview">
+  <div class="livebar">
+    <span class="dot" aria-hidden="true"></span>
+    <span>今日使用最多</span>
+    <b id="liveName">—</b>
+    <span class="fg" id="liveFg"></span>
+  </div>
+
+  <header class="hero">
+    <div class="hero-in">
+      <h1>电脑使用统计<span class="h1en">SCREEN TIME REPORT</span></h1>
+      <div class="sub">每日使用情况 · 仅保存在本机 · 不联网</div>
+    </div>
+  </header>
+
+  <div class="nodata" id="noData" hidden>
+    <div class="nd-title">暂无数据</div>
+    <div class="nd-sub">暂无 usage-*.json 记录文件。<br>记录程序运行一段时间后再打开即可。</div>
+  </div>
+
+  <section class="card">
+    <!-- 工具栏：日期 · 时段页签 · 数据状态合并为一行，不再各占一层 -->
+    <div class="toolbar">
+      <span class="tb-date" id="heroDate">—</span>
+      <div class="tabs" id="tabs" role="tablist" aria-label="时间范围">
+        <button type="button" role="tab" data-mode="today" class="on" aria-selected="true" aria-controls="modePanel">今日</button>
+        <button type="button" role="tab" data-mode="7d" aria-selected="false" aria-controls="modePanel" tabindex="-1">近 7 天</button>
+        <button type="button" role="tab" data-mode="30d" aria-selected="false" aria-controls="modePanel" tabindex="-1">近 30 天</button>
+      </div>
+      <span class="tb-status" id="viewStatus"></span>
+    </div>
+
+    <div id="modePanel" role="tabpanel" aria-label="统计详情">
+    <div class="blocks">
+      <div class="block k1">
+        <span class="b-label">总时长</span>
+        <span class="b-num" id="blkTotal">—</span>
+        <span class="b-sub" id="blkTotalSub"></span>
+      </div>
+      <div class="block k2">
+        <span class="b-label" id="blkAvgLabel">日均</span>
+        <span class="b-num" id="blkAvg">—</span>
+        <span class="b-sub">按有记录的日子平均</span>
+      </div>
+      <div class="block k3">
+        <span class="b-label">记录应用</span>
+        <span class="b-num" id="blkAppCount">—</span>
+        <span class="b-sub">有前台记录的应用数</span>
+      </div>
+      <div class="block k4">
+        <span class="b-label">最专注时段</span>
+        <span class="b-num" id="blkPeak">—</span>
+        <span class="b-sub" id="blkPeakSub"></span>
+      </div>
+    </div>
+
+    <h2 id="chartTitle" data-idx="01">24 小时分布<span class="en">DISTRIBUTION</span></h2>
+    <div class="chart-wrap"><div class="chart" id="chart"></div></div>
+
+    <h2 data-idx="02" style="margin-top:12px;">应用使用时长排行榜<span class="en">RANKING · TOP 10</span><span class="legend" title="前台：应用在前台且你未空闲的时长；后台：进程运行总时长中不在前台的部分（后台秒 − 前台秒），完整口径见每行悬停提示"><span class="sw fg"></span>前台<span class="sw bgo"></span>后台</span></h2>
+    <ol class="rank" id="rank"></ol>
+    <p class="empty" id="emptyMsg" hidden>暂无记录。</p>
+    <div class="rank-more" id="rankMoreRow" hidden><button type="button" class="gbtn" id="rankMoreBtn">展开全部</button></div>
+    <p class="note" id="rankNote" style="margin-top:10px;"></p>
+    </div>
+  </section>
+
+  <!-- 平均区置于详情卡之后：扫读第三层「与其他日期相比如何」，安静呈现 -->
+  <section class="card">
+    <h2 data-idx="03">平均使用时长<span class="en">AVERAGES</span></h2>
+    <div class="avg-grid">
+      <div class="avg"><div class="a-label" id="avgDailyLabel">日均</div><div class="a-num" id="avgDaily">—</div><div class="a-sub" id="avgDailySub"></div></div>
+      <div class="avg"><div class="a-label" id="avgWeeklyLabel">周均</div><div class="a-num" id="avgWeekly">—</div><div class="a-sub" id="avgWeeklySub"></div></div>
+      <div class="avg"><div class="a-label" id="avgMonthlyLabel">月均</div><div class="a-num" id="avgMonthly">—</div><div class="a-sub" id="avgMonthlySub"></div></div>
+    </div>
+  </section>
+</div>
+
+<!-- ============ 图表页（2×2 网格） ============ -->
+<div class="page" id="page-charts" role="tabpanel" aria-labelledby="tab-charts" hidden>
+  <div class="covbar" id="covBar" role="status"></div>
+  <div class="chart-grid">
+    <section class="card">
+      <h2 data-idx="01">近 30 天每日总时长<span class="en">TREND · 30 DAYS</span><span class="cov" id="trendCov"></span></h2>
+      <div class="chartbox"><div class="svgbox" id="trendChart"></div><div class="charttip" id="trendTip" hidden></div></div>
+      <p class="note" id="trendNote"></p>
+      <p class="hint" id="trendHint" hidden>记录天数较少，满一周后趋势更完整。</p>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="02">时段分布<span class="en">BY HOUR · 近 30 天合计</span><span class="cov" id="hourCov"></span></h2>
+      <div class="chart-wrap"><div class="chart" id="hourChart"></div></div>
+      <p class="note">按小时汇总前台时长。</p>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="03">星期规律<span class="en">BY WEEKDAY · 近 30 天日均</span><span class="cov" id="weekCov"></span></h2>
+      <div class="chart-wrap"><div class="chart" id="weekChart"></div></div>
+      <p class="note" id="weekNote"></p>
+      <p class="hint" id="weekHint" hidden>记录总天数还不足一周，星期均值的样本太少，先攒几天再看规律。</p>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="04">应用占比<span class="en">SHARE · 近 30 天前台时长</span><span class="cov" id="shareCov"></span></h2>
+      <div class="share-flex">
+        <div id="shareChart"></div>
+        <ul class="share-legend" id="shareLegend"></ul>
+      </div>
+      <p class="note">前 6 名，其余合并为「其他」。</p>
+    </section>
+  </div>
+  <!-- 页脚口径说明：置于 2×2 网格之后，不再占图表页顶部 -->
+  <p class="charts-intro" id="chartsIntro"></p>
+</div>
+
+<!-- ============ 设置页（双列紧凑） ============ -->
+<div class="page" id="page-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+  <div class="savebar"><span class="dia" aria-hidden="true"></span><span id="saveHint">设置改动会即时保存到 settings.json，记录程序在一分钟内自动生效。</span></div>
+
+  <div class="set-grid">
+    <section class="card">
+      <h2 data-idx="01">采集<span class="en">RECORDING</span></h2>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">空闲判定</div>
+          <div class="s-desc">键鼠无操作超过此时长后，前台时间不再计给任何应用、转记为空闲。</div>
+        </div>
+        <div class="seg" id="setIdle" role="group" aria-label="空闲判定"></div>
+      </div>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">后台统计</div>
+          <div class="s-desc">记录每个进程的运行时长与 CPU 时间（排行榜里「后台运行」的来源）。关掉后只记前台。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setBgInput" aria-label="后台统计"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">看视频时不判空闲</div>
+          <div class="s-desc">键鼠静止超过空闲判定后，若前台应用正在出声播放、或处于全屏/演示状态，仍按在用计时（看哔哩哔哩、Edge 视频课时不被误判离开）。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setMediaInput" aria-label="看视频时不判空闲"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">专注应用宽限</div>
+          <div class="s-desc">Edge、哔哩哔哩客户端在前台时，空闲判定放宽到 15 分钟，覆盖看长文、读文档这类无声又不动的时段。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setGraceInput" aria-label="专注应用宽限"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="02">数据与启动<span class="en">DATA &amp; STARTUP</span></h2>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">数据保留</div>
+          <div class="s-desc">自动删除超过保留期的 usage-*.json 日文件；「永久」不删除。</div>
+        </div>
+        <div class="seg" id="setRetention" role="group" aria-label="数据保留"></div>
+      </div>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">开机自启</div>
+          <div class="s-desc">登录 Windows 后自动启动记录程序（与托盘右键菜单里的自启开关是同一项设置）。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setAutoInput" aria-label="开机自启"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="03">配色与显示<span class="en">THEME &amp; DISPLAY</span></h2>
+      <div class="themes" id="themeBarSet" style="margin-top:4px;" aria-label="配色方案"></div>
+      <p class="note">四套配色（账册蓝 / 晴蓝 / 墨黑 / 朱红），点选即时生效并保存。</p>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">排行榜隐藏系统进程</div>
+          <div class="s-desc">开启后，排行榜不显示 Windows 搜索、开始菜单等系统进程的行（只是不显示，记录照常）。系统进程与难懂的进程名会一直以友好名称显示，如「微信小程序」「Windows 搜索」。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setHideSysInput" aria-label="排行榜隐藏系统进程"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-idx="04">数据管理<span class="en">DATA FILES</span></h2>
+      <p class="data-line">数据目录：</p>
+      <div class="data-path" id="dataDirText">—</div>
+      <p class="data-line">当前共有 <b id="dataDaysText">—</b> 天的记录文件（usage-*.json），与 settings.json 一起放在上面的数据目录里；诊断日志 stats_debug.log 放在程序所在的目录。</p>
+      <div class="btn-row">
+        <button class="gbtn" id="copyDirBtn" type="button">复制路径</button>
+        <button class="gbtn" id="openDirBtn" type="button">打开数据文件夹</button>
+      </div>
+    </section>
+
+    <!-- 工具类设置默认折叠：与时长统计的主线分开，需要时再展开 -->
+    <section class="card">
+      <h2 data-idx="05" class="fold-head" id="wifiFoldHead" role="button" tabindex="0" aria-expanded="false" aria-controls="wifiFoldBody">工具 · 网络辅助<span class="en">TOOLS · NETWORK</span><span class="fold-chev" aria-hidden="true">▾</span></h2>
+      <div class="fold-body" id="wifiFoldBody" hidden>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">WiFi 扫描保鲜</div>
+          <div class="s-desc">未连接 WiFi 时，记录程序每约 45 秒主动刷新一次可用网络列表，避免列表冻住不更新。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setWifiInput" aria-label="WiFi 扫描保鲜"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+      <div class="set-row">
+        <div class="s-main">
+          <div class="s-label">自动连接已保存网络</div>
+          <div class="s-desc">断开超过 20 秒后，自动连接信号最强的已保存网络（需开启扫描保鲜）。只连保存过的网络，不连陌生网络。</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="setWifiAutoInput" aria-label="自动连接已保存网络"><span class="sl" aria-hidden="true"></span></label>
+      </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="savetoast" id="saveToast" role="status" aria-live="polite"></div>
+</main>
+
+<footer>数据存于本机程序目录 · 不联网</footer>
+
+<!-- 窗口缩放手柄（无边框）：四边 + 四角，pointerdown 经 win:resize 回宿主 -->
+<div class="rz rz-t" data-rz="T" aria-hidden="true"></div>
+<div class="rz rz-b" data-rz="B" aria-hidden="true"></div>
+<div class="rz rz-l" data-rz="L" aria-hidden="true"></div>
+<div class="rz rz-r" data-rz="R" aria-hidden="true"></div>
+<div class="rz rz-tl" data-rz="TL" aria-hidden="true"></div>
+<div class="rz rz-tr" data-rz="TR" aria-hidden="true"></div>
+<div class="rz rz-bl" data-rz="BL" aria-hidden="true"></div>
+<div class="rz rz-br" data-rz="BR" aria-hidden="true"></div>
+
+<script>
+// 数据与设置由宿主在导航前直接内嵌（NavigateToString），不依赖外部文件。
+window.USAGE_DATA = /*USESTATS_DATA*/;
+window.USESTATS_SETTINGS = /*USESTATS_SETTINGS*/;
+</script>
+
+<script>
+"use strict";
+// ==AGG-BEGIN==
+// ---------- 纯聚合层（不依赖 DOM，数值口径以这一段为准） ----------
+// 数据结构与 C++ 注入的 window.USAGE_DATA 一致：
+// { today:"YYYY-MM-DD", days:[{date, idleSeconds, apps:[{path,name,fgSeconds,bgSeconds,cpuSeconds,hourlyFg[24]}]}] }
+
+function aggAppsOf(day) { // 畸形/缺失字段时按无应用处理，聚合层永不抛错
+  return (day && Array.isArray(day.apps)) ? day.apps : [];
+}
+function aggDayTotal(day) {
+  let t = 0;
+  for (const a of aggAppsOf(day)) t += (a && a.fgSeconds) || 0;
+  return t;
+}
+function aggParseDate(s) {
+  const p = s.split("-").map(Number);
+  return new Date(p[0], p[1] - 1, p[2]);
+}
+function aggFmtDate(dt) {
+  const p2 = (v) => String(v).padStart(2, "0");
+  return dt.getFullYear() + "-" + p2(dt.getMonth() + 1) + "-" + p2(dt.getDate());
+}
+function aggAddDays(s, n) {
+  const dt = aggParseDate(s);
+  dt.setDate(dt.getDate() + n);
+  return aggFmtDate(dt);
+}
+function aggMondayOf(s) { // 所在自然周的周一（YYYY-MM-DD）
+  const dt = aggParseDate(s);
+  const back = (dt.getDay() + 6) % 7;
+  dt.setDate(dt.getDate() - back);
+  return aggFmtDate(dt);
+}
+
+function aggBuildView(data, mode) {
+  const today = data.today;
+  let start = today;
+  if (mode === "7d") start = aggAddDays(today, -6);
+  else if (mode === "30d") start = aggAddDays(today, -29);
+
+  const allDays = (data && Array.isArray(data.days)) ? data.days : [];
+  const byDate = new Map();
+  for (const d of allDays) { if (d && d.date) byDate.set(d.date, d); }
+
+  const dates = [];
+  for (let s = start; ; s = aggAddDays(s, 1)) {
+    dates.push(s);
+    if (s === today) break;
+  }
+
+  let total = 0;
+  let idle = 0;
+  let daysWithData = 0;
+  const hourly = new Array(24).fill(0);
+  const appMap = new Map();
+  for (const ds of dates) {
+    const day = byDate.get(ds);
+    if (!day) continue;
+    daysWithData++;
+    total += aggDayTotal(day);
+    idle += day.idleSeconds || 0;
+    for (const a of aggAppsOf(day)) {
+      if (!a || a.path == null) continue;
+      for (let h = 0; h < 24; h++) hourly[h] += (a.hourlyFg && a.hourlyFg[h]) || 0;
+      let e = appMap.get(a.path);
+      if (!e) { e = { path: a.path, name: a.name || a.path, fg: 0, bg: 0 }; appMap.set(a.path, e); }
+      e.fg += a.fgSeconds || 0;
+      e.bg += a.bgSeconds || 0;
+      if (a.name) e.name = a.name;
+    }
+  }
+
+  const ranking = Array.from(appMap.values()).map((e) => {
+    const bgOnly = Math.max(0, e.bg - e.fg); // 后台秒含前台时间，拆分时减掉
+    return { name: e.name, path: e.path, fg: e.fg, bgOnly: bgOnly, total: e.fg + bgOnly };
+  }).sort((x, y) => (y.fg - x.fg) || (y.total - x.total) || (x.name < y.name ? -1 : 1)).slice(0, 10);
+
+  let peakHour = -1, peakSeconds = 0;
+  hourly.forEach((v, h) => { if (v > peakSeconds) { peakSeconds = v; peakHour = h; } });
+
+  let chart = [];
+  if (mode === "today") {
+    chart = hourly.map((v, h) => ({ label: h + ":00", seconds: v }));
+  } else if (mode === "7d") {
+    chart = dates.map((ds) => ({ label: ds, seconds: byDate.has(ds) ? aggDayTotal(byDate.get(ds)) : 0 }));
+  } else {
+    const weeks = new Map();
+    for (const ds of dates) {
+      const mon = aggMondayOf(ds);
+      weeks.set(mon, (weeks.get(mon) || 0) + (byDate.has(ds) ? aggDayTotal(byDate.get(ds)) : 0));
+    }
+    chart = Array.from(weeks.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([mon, sec]) => ({ label: mon, seconds: sec }));
+  }
+
+  return {
+    mode: mode, start: start, end: today, total: total, idle: idle,
+    daysWithData: daysWithData, ranking: ranking, chart: chart,
+    peakHour: peakHour, peakSeconds: peakSeconds,
+    topApp: ranking.length ? ranking[0] : null,
+    appCount: appMap.size // 有前台/后台记录的应用总数（新增展示字段，不参与任何既有数字）
+  };
+}
+
+function aggComputeAverages(data) {
+  const allDays = (data && Array.isArray(data.days)) ? data.days.filter((d) => d && d.date) : [];
+  const daysDesc = allDays.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  const totals = daysDesc.map((d) => ({ date: d.date, total: aggDayTotal(d) }));
+
+  const recent = totals.slice(0, 7); // 最近 7 个有数据的日子
+  const dailySec = recent.length ? recent.reduce((s, x) => s + x.total, 0) / recent.length : 0;
+
+  const weekMap = new Map();
+  for (const t of totals) {
+    const mon = aggMondayOf(t.date);
+    weekMap.set(mon, (weekMap.get(mon) || 0) + t.total);
+  }
+  const weekKeys = Array.from(weekMap.keys()).sort().reverse().slice(0, 4); // 最近 4 个有数据的自然周
+  const weeklySec = weekKeys.length ? weekKeys.reduce((s, k) => s + weekMap.get(k), 0) / weekKeys.length : 0;
+
+  const monthMap = new Map();
+  for (const t of totals) {
+    const mk = t.date.slice(0, 7);
+    monthMap.set(mk, (monthMap.get(mk) || 0) + t.total);
+  }
+  const monthKeys = Array.from(monthMap.keys()).sort().reverse().slice(0, 3); // 最近 3 个有数据的自然月
+  const monthlySec = monthKeys.length ? monthKeys.reduce((s, k) => s + monthMap.get(k), 0) / monthKeys.length : 0;
+
+  return {
+    daily:   { seconds: Math.round(dailySec),   count: recent.length },
+    weekly:  { seconds: Math.round(weeklySec),  count: weekKeys.length },
+    monthly: { seconds: Math.round(monthlySec), count: monthKeys.length }
+  };
+}
+
+// 图表页聚合（与总览同为前台口径；窗口统一为以 today 结尾的近 30 天）：
+// - trend：30 天逐日总时长（缺文件日为 0）+ 每日的 7 日移动平均 ma（trailing 含当日，不足 7 天按实际天数）；
+//   每项另带 hasFile（当天有没有记录文件）——这是新增的覆盖元信息，只用于渲染层
+//   区分三态（有记录且 >0 / 有记录且 =0 / 无文件未记录），不改变 seconds 与 ma 的任何数值；
+// - hourly：窗口内全部记录日的 hourlyFg 按小时相加；
+// - weekday：周一..周日的日均总时长，分母是该星期几在窗口内实际有记录文件的天数（days）；
+// - share：窗口内按 path 聚合 fg 降序 Top 6，其余合并为一项「其他」（fg>0 时才出现）；
+// - total：窗口总时长；daysPresent：窗口内有记录文件的天数。
+function aggChartData(data) {
+  const today = data && data.today;
+  // today 缺失/非法（如占位符未被宿主替换）时直接给空结果：
+  // 否则下面的逐日循环永远等不到结束日，会把页面挂死。
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today || "")) {
+    return { start: "", end: "", trend: [], hourly: new Array(24).fill(0),
+             weekday: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+               .map((label) => ({ label: label, days: 0, seconds: 0 })),
+             share: [], total: 0, daysPresent: 0 };
+  }
+  const start = aggAddDays(today, -29);
+  const allDays = (data && Array.isArray(data.days)) ? data.days : [];
+  const byDate = new Map();
+  for (const d of allDays) { if (d && d.date) byDate.set(d.date, d); }
+
+  const trend = [];
+  const hourly = new Array(24).fill(0);
+  const wdSum = [0, 0, 0, 0, 0, 0, 0];
+  const wdDays = [0, 0, 0, 0, 0, 0, 0];
+  const appMap = new Map();
+  let total = 0;
+  let daysPresent = 0;
+  for (let s = start; ; s = aggAddDays(s, 1)) {
+    const day = byDate.get(s);
+    const sec = day ? aggDayTotal(day) : 0;
+    trend.push({ date: s, seconds: sec, ma: 0, hasFile: !!day }); // hasFile：三态渲染的覆盖标记
+    if (day) {
+      daysPresent++;
+      total += sec;
+      const wi = (aggParseDate(s).getDay() + 6) % 7; // 0=周一 .. 6=周日
+      wdSum[wi] += sec;
+      wdDays[wi] += 1;
+      for (const a of aggAppsOf(day)) {
+        if (!a || a.path == null) continue;
+        for (let h = 0; h < 24; h++) hourly[h] += (a.hourlyFg && a.hourlyFg[h]) || 0;
+        let e = appMap.get(a.path);
+        if (!e) { e = { name: a.name || a.path, fg: 0 }; appMap.set(a.path, e); }
+        e.fg += a.fgSeconds || 0;
+        if (a.name) e.name = a.name;
+      }
+    }
+    if (s === today) break;
+  }
+  for (let i = 0; i < trend.length; i++) {
+    let sum = 0, cnt = 0;
+    for (let k = Math.max(0, i - 6); k <= i; k++) { sum += trend[k].seconds; cnt++; }
+    trend[i].ma = Math.round(sum / cnt);
+  }
+  const WD_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  const weekday = wdSum.map((v, i) => ({
+    label: WD_LABELS[i], days: wdDays[i],
+    seconds: wdDays[i] ? Math.round(v / wdDays[i]) : 0
+  }));
+  const sorted = Array.from(appMap.values()).sort((x, y) => y.fg - x.fg);
+  const share = sorted.slice(0, 6).map((e) => ({ name: e.name, fg: e.fg }));
+  const restFg = sorted.slice(6).reduce((acc, e) => acc + e.fg, 0);
+  if (restFg > 0) share.push({ name: "其他", fg: restFg });
+  return { start: start, end: today, trend: trend, hourly: hourly,
+           weekday: weekday, share: share, total: total, daysPresent: daysPresent };
+}
+// ==AGG-END==
+
+// ---------- 显示层 ----------
+const DATA = window.USAGE_DATA || { today: "", days: [] };
+const $ = (id) => document.getElementById(id);
+const WEEKDAY = ["日", "一", "二", "三", "四", "五", "六"];
+
+function fmtDur(sec) {
+  sec = Math.round(sec || 0);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h > 0) return m > 0 ? h + " 小时 " + m + " 分" : h + " 小时";
+  if (m > 0) return m + " 分钟";
+  return s + " 秒";
+}
+function fmtDurShort(sec) { // 图表柱顶的简短标注
+  if (sec >= 3600) return (sec / 3600).toFixed(1).replace(/\.0$/, "") + "h";
+  if (sec >= 60) return Math.round(sec / 60) + "分";
+  return sec > 0 ? sec + "s" : "";
+}
+function durTextLines(t) { // 环图圆心用：「20 小时 13 分」拆两行 ["20 小时","13 分"]，单段时长保持一行
+  const p = String(t).split(" ");
+  return p.length === 4 ? [p[0] + " " + p[1], p[2] + " " + p[3]] : [String(t)];
+}
+function fmtDateCN(s) {
+  if (!s) return "—";
+  const dt = aggParseDate(s);
+  return dt.getFullYear() + " 年 " + (dt.getMonth() + 1) + " 月 " + dt.getDate() + " 日 · 星期" + WEEKDAY[dt.getDay()];
+}
+function mdLabel(s) { const dt = aggParseDate(s); return (dt.getMonth() + 1) + "/" + dt.getDate(); }
+function escHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const HAS_DATA = Array.isArray(DATA.days) && DATA.days.length > 0;
+
+// ---------- 配色方案（主题） ----------
+// 两路生效：静态样式与图表/排行条走 CSS 变量（:root[data-theme=...]）；
+// JS 侧颜色走下面 THEMES 的 avatars「应用身份色」调色板：它只标识应用
+// 个体、不承载语义（语义色是 CSS 侧的 --a1/--a2/--a3，规则见 <style> 头注
+// 与 README「颜色语义」表）。身份色按应用名哈希到固定槽位（avatarColor)，
+// 排行头像与占比环图共用同一映射——同一应用永远同色，与名次、日期范围、
+// 页签都无关。切换主题时调色板整体换装，但槽位（哈希结果）不变。
+// 主题切换设 documentElement 的 data-theme + 重渲染，即时生效不刷新；
+// 主题以 settings.json 为准（宿主注入 USESTATS_SETTINGS），localStorage
+// 只作降级缓存（无 settings 注入时沿用上次选择）。
+const THEMES = {
+  classic: { label: "账册蓝", swatches: ["#1E3A9E", "#1E7A46", "#C77400"], avatarInk: "#FFFFFF",
+             avatars: ["#1A73E8", "#188038", "#D93025", "#9334E6", "#007B83", "#C2185B", "#3F51B5"] },
+  soft:    { label: "晴蓝", swatches: ["#2F6BA3", "#1E7A46", "#C77400"], avatarInk: "#FFFFFF",
+             avatars: ["#1460B8", "#0E7A6D", "#6A3EC9", "#C22F4E", "#0B6B74", "#1E7A4C", "#3A4A5A"] },
+  dark:    { label: "墨黑", swatches: ["#3A3F4A", "#4CC38A", "#F0A13C"], avatarInk: "#1F1F1F",
+             avatars: ["#8AB4F8", "#81C995", "#FDD663", "#F28B82", "#C58AF9", "#7FD1C0", "#F6A5C0"] },
+  red:     { label: "朱红", swatches: ["#AE3520", "#1E7A46", "#BC6200"], avatarInk: "#FFFFFF",
+             avatars: ["#C5221F", "#C2185B", "#0E7A6D", "#1460B8", "#8430CE", "#5D4037", "#8A5A00"] },
+};
+const THEME_KEY = "usestats-theme";
+let curTheme = "classic";
+let curMode = "today";
+let curPage = "overview";
+const themeBtns = [];
+
+function themeStorage() {
+  try { return window.localStorage || null; } catch (e) { return null; }
+}
+function applyTheme(name, skipRender) {
+  if (!THEMES[name]) name = "classic";
+  curTheme = name;
+  try {
+    if (document.documentElement) document.documentElement.setAttribute("data-theme", name);
+  } catch (e) { /* 无 documentElement 的环境（如测试桩）跳过 */ }
+  const ls = themeStorage();
+  if (ls) { try { ls.setItem(THEME_KEY, name); } catch (e) { /* 存储不可用时不持久化 */ } }
+  for (const b of themeBtns) {
+    const on = b.dataset.theme === name;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false"); // 选中态不只靠颜色
+  }
+  if (!skipRender) renderAll(); // 头像/环图等 JS 侧颜色跟着主题换
+}
+function buildThemeBarInto(bar) {
+  if (!bar) return;
+  for (const key of Object.keys(THEMES)) {
+    const t = THEMES[key];
+    const btn = document.createElement("button");
+    btn.className = "theme-btn";
+    btn.type = "button";
+    btn.dataset.theme = key;
+    btn.setAttribute("aria-pressed", "false");
+    for (const c of t.swatches) {
+      const s = document.createElement("span");
+      s.className = "tsw";
+      s.style.background = c;
+      btn.appendChild(s);
+    }
+    const lab = document.createElement("span");
+    lab.textContent = t.label;
+    btn.appendChild(lab);
+    btn.addEventListener("click", () => {
+      applyTheme(key);
+      SET.theme = key;
+      saveSettings();
+    });
+    bar.appendChild(btn);
+    themeBtns.push(btn);
+  }
+}
+function initTheme() {
+  try {
+    buildThemeBarInto($("themeBarSet")); // 主题切换只在设置页，总览不设换肤入口
+    // 优先序：宿主注入的 settings.json 主题 > localStorage 降级缓存 > 默认
+    let initial = null;
+    if (window.USESTATS_SETTINGS && THEMES[window.USESTATS_SETTINGS.theme])
+      initial = window.USESTATS_SETTINGS.theme;
+    if (!initial) {
+      const ls = themeStorage();
+      if (ls) { try { initial = ls.getItem(THEME_KEY); } catch (e) { initial = null; } }
+    }
+    applyTheme(initial && THEMES[initial] ? initial : "classic", true);
+  } catch (e) { /* 保持默认主题 */ }
+}
+
+function fillAverages() {
+  const AV = aggComputeAverages(DATA);
+  const set = (numId, labelId, subId, item, unit, base, subFn) => {
+    $(numId).textContent = item.count > 0 ? fmtDur(item.seconds) : "—";
+    $(labelId).textContent = item.count > 0 ? "近 " + item.count + " " + unit + base : base;
+    // 计算范围直接写在卡片上：均值只按有记录的单位取平均，分母就是注脚里的数
+    const sub = $(subId);
+    if (sub) sub.textContent = item.count > 0 ? subFn(item.count) : "暂无记录";
+  };
+  set("avgDaily", "avgDailyLabel", "avgDailySub", AV.daily, "天", "日均",
+      (n) => "按最近 " + n + " 个有记录的日子计算");
+  set("avgWeekly", "avgWeeklyLabel", "avgWeeklySub", AV.weekly, "周", "周均",
+      (n) => "按最近 " + n + " 个有记录的自然周计算（整周合计）");
+  set("avgMonthly", "avgMonthlyLabel", "avgMonthlySub", AV.monthly, "个月", "月均",
+      (n) => "按最近 " + n + " 个有记录的月份计算");
+  $("blkAvg").textContent = AV.daily.count > 0 ? fmtDur(AV.daily.seconds) : "—";
+  $("blkAvgLabel").textContent = AV.daily.count > 0 ? "日均（近 " + AV.daily.count + " 天）" : "日均";
+  $("heroDate").textContent = fmtDateCN(DATA.today);
+  if (!HAS_DATA) $("noData").hidden = false;
+}
+
+function avatarColor(name) {
+  // 应用身份色的唯一映射：应用名 → 哈希 → 当前主题调色板的固定槽位。
+  // 排行头像（renderRank）与占比环图（renderShare）都只许走这里，
+  // 不许按名次取色——名次会变，颜色不能跟着变。
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const pal = (THEMES[curTheme] || THEMES.classic).avatars; // 色板跟随当前主题
+  return pal[h % pal.length];
+}
+
+// 图表容器的文字摘要：柱形本身只靠图形传达，读屏用户走这条通道拿同样的信息。
+function chartAriaLabel(view) {
+  if (view.mode === "today") {
+    return view.peakHour >= 0
+      ? "24 小时前台分布，峰值在 " + view.peakHour + " 时，前台 " + fmtDur(view.peakSeconds) + "，总计 " + fmtDur(view.total)
+      : "24 小时前台分布，暂无数据";
+  }
+  let mx = null;
+  for (const c of view.chart) if (!mx || c.seconds > mx.seconds) mx = c;
+  const what = view.mode === "7d" ? "近 7 天每日总时长" : "近 30 天每周总时长";
+  if (!mx || mx.seconds <= 0) return what + "，暂无数据";
+  return view.mode === "7d"
+    ? what + "，最高 " + mx.label + "，" + fmtDur(mx.seconds)
+    : what + "，最高一周自 " + mx.label + " 起，" + fmtDur(mx.seconds);
+}
+
+function renderChart(view) {
+  const box = $("chart");
+  box.innerHTML = "";
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", chartAriaLabel(view));
+  const max = Math.max(1, ...view.chart.map((c) => c.seconds));
+  view.chart.forEach((c, i) => {
+    const col = document.createElement("div");
+    col.className = "col";
+    const isPeak = c.seconds > 0 && c.seconds === max;
+    let lab = "";
+    if (view.mode === "today") lab = i % 3 === 0 ? c.label : "";
+    else if (view.mode === "7d") lab = "周" + WEEKDAY[aggParseDate(c.label).getDay()] + " " + mdLabel(c.label);
+    else lab = mdLabel(c.label) + " 起";
+    col.innerHTML =
+      '<div class="val' + (isPeak ? " pk" : "") + '">' + (isPeak ? fmtDurShort(c.seconds) : "") + "</div>" +
+      '<div class="bar' + (isPeak ? " peak" : "") + '" style="height:' + Math.max(2, Math.round((c.seconds / max) * 76)) + 'px" title="' + c.label + " · " + fmtDur(c.seconds) + '"></div>' +
+      '<div class="lab">' + lab + "</div>";
+    box.appendChild(col);
+  });
+  $("chartTitle").firstChild.textContent =
+    view.mode === "today" ? "24 小时分布" : view.mode === "7d" ? "每日总时长" : "每周总时长";
+}
+
+// ---------- 应用名显示层：友好名别名 + 系统进程识别 ----------
+// 数据里的名字来自记录器（版本说明 → 进程名回退）；WeChatAppEx、SearchHost
+// 这类名字普通用户看不懂，这里在显示层统一换成友好名（原始名保留在悬停
+// title 里可核对），数据与聚合口径一概不动。
+const APP_ALIASES = {
+  wechatappex: "微信小程序", searchhost: "Windows 搜索",
+  startmenuexperiencehost: "开始菜单", shellexperiencehost: "Windows 外壳",
+  textinputhost: "文本输入", runtimebroker: "运行时代理",
+  applicationframehost: "应用框架主机", fontdrvhost: "字体驱动主机",
+  dllhost: "COM 代理进程", conhost: "控制台主机", wmiprvse: "WMI 服务",
+  searchindexer: "搜索索引服务", searchprotocolhost: "搜索协议主机",
+  securityhealthservice: "Windows 安全服务", securityhealthsystray: "Windows 安全中心",
+  msmpeng: "Windows Defender", svchost: "Windows 服务主机",
+  system: "系统", ctfmon: "输入法进程", dwm: "桌面窗口管理器",
+  audiodg: "Windows 音频服务", explorer: "Windows 资源管理器"
+};
+// 「隐藏系统进程」开关的过滤名单（键与别名表同为归一化进程名）
+const SYSTEM_APPS = new Set([
+  "searchhost", "startmenuexperiencehost", "shellexperiencehost", "textinputhost",
+  "runtimebroker", "applicationframehost", "fontdrvhost", "dllhost", "conhost",
+  "wmiprvse", "searchindexer", "searchprotocolhost", "searchfilterhost",
+  "securityhealthservice", "securityhealthsystray", "msmpeng", "svchost",
+  "system", "registry", "smss", "csrss", "wininit", "winlogon", "services",
+  "lsass", "spoolsv", "dwm", "ctfmon", "audiodg"
+]);
+function appKey(name) { return (name || "").trim().toLowerCase().replace(/\.exe$/, ""); }
+function displayName(name) { return APP_ALIASES[appKey(name)] || name; }
+function isSystemApp(name) { return SYSTEM_APPS.has(appKey(name)); }
+
+let rankExpanded = false; // 排行榜默认只展示前 5 名，展开状态在本次打开内保留
+let lastRankView = null;
+
+function renderRank(view) {
+  lastRankView = view;
+  const ol = $("rank");
+  ol.innerHTML = "";
+  // 显示层过滤：隐藏系统进程只影响排行行的可见性，总量/占比口径不变
+  const rows = view.ranking.filter((r) => !(SET.hideSystemApps && isSystemApp(r.name)));
+  const em = $("emptyMsg");
+  if (rows.length > 0) {
+    em.hidden = true;
+  } else {
+    em.hidden = false;
+    em.textContent = view.ranking.length > 0
+      ? "排行中的应用都被「隐藏系统进程」过滤了，可在设置页关掉该开关恢复显示。"
+      : "暂无记录。";
+  }
+  // 条形尺度说明：置于列表底部作脚注（满格＝当前第一名合计）；按用户要求
+  // 这段不用逗号句号——逗号以空格代、句号去掉，分号保留
+  const note = $("rankNote");
+  if (note) {
+    note.textContent = rows.length > 0
+      ? "条长按第一名校准：满格 ＝ " + displayName(rows[0].name) + "（前台＋后台合计 " + fmtDur(rows[0].total) +
+        "） 绿段＝前台 棕段＝后台运行；右侧大字是前台时长 后台为次级信息"
+      : "";
+  }
+  const maxTotal = Math.max(1, ...rows.map((r) => r.total));
+  const shown = rankExpanded ? rows : rows.slice(0, 5);
+  shown.forEach((r, i) => {
+    const li = document.createElement("li");
+    li.className = "rrow";
+    const pct = view.total > 0 ? Math.round((r.fg / view.total) * 100) : 0;
+    const fgW = ((r.fg / maxTotal) * 100).toFixed(1); // 数据条按可见列表内最大总量归一
+    const bgW = ((r.bgOnly / maxTotal) * 100).toFixed(1);
+    const dName = displayName(r.name);
+    const initial = (dName || "?").trim().charAt(0).toUpperCase() || "?";
+    const col = avatarColor(dName); // 身份色按显示名哈希：排行与环图同一映射
+    const ink = (THEMES[curTheme] || THEMES.classic).avatarInk || "#FFFFFF";
+    // 主文案只留短数字（前台时长 + 「后台 X」短注），完整口径放进行 title 悬停：
+    li.title = "前台 " + fmtDur(r.fg) + "（应用在前台且你未空闲的时长）· 后台运行共 " +
+               fmtDur(r.fg + r.bgOnly) + "（进程存活总时长，含前台），其中不在前台 " +
+               fmtDur(r.bgOnly) + "（= 后台秒 − 前台秒）";
+    // 数据条与头像是纯视觉通道（aria-hidden），同一信息另给一份读屏文本（.vh）。
+    // 行 DOM 与 .rrow 的五列 grid 一一对应：身份组（名次+头像+名称包成一格）
+    // | 数据条 | 后台文案 | 时长 | 占比；.vh 是绝对定位的读屏文本，不占格。
+    li.innerHTML =
+      '<span class="r-id">' +
+        '<span class="rn">' + String(i + 1).padStart(2, "0") + "</span>" +
+        '<span class="avatar" aria-hidden="true" style="background:' + col + ";color:" + ink + '">' + escHtml(initial) + "</span>" +
+        '<span class="r-name"></span>' +
+      "</span>" +
+      '<span class="r-bar" aria-hidden="true"><span class="bf" style="width:' + fgW + '%"></span><span class="bb" style="width:' + bgW + '%"></span></span>' +
+      '<span class="vh">前台 ' + fmtDur(r.fg) + "，后台运行共 " + fmtDur(r.fg + r.bgOnly) + "</span>" +
+      (r.bgOnly > 0 ? '<span class="r-bg">后台 ' + fmtDur(r.bgOnly) + "</span>" : '<span class="r-bg"></span>') +
+      '<span class="r-time">' + fmtDur(r.fg) + "</span>" +
+      '<span class="r-pct">' + pct + "%</span>";
+    const nameEl = li.querySelector(".r-name");
+    nameEl.textContent = dName;
+    nameEl.title = r.name; // 显示友好名时，悬停名字可核对原始进程名；截断时也可看全名
+    ol.appendChild(li);
+  });
+  // 展开/收起：超过 5 条才出现按钮
+  const moreRow = $("rankMoreRow"), moreBtn = $("rankMoreBtn");
+  if (moreRow && moreBtn) {
+    moreRow.hidden = rows.length <= 5;
+    moreBtn.textContent = rankExpanded ? "收起" : "展开全部 " + rows.length + " 条";
+  }
+}
+
+function render(mode) {
+  const view = aggBuildView(DATA, mode);
+  $("blkTotal").textContent = fmtDur(view.total);
+  $("blkTotalSub").textContent = mode === "today"
+    ? "空闲 " + fmtDur(view.idle) + " 不计入"
+    : mdLabel(view.start) + " – " + mdLabel(view.end) + " · " + view.daysWithData + " 天有记录";
+  // 「最常用应用」与顶部状态条是同一信息，总览只在状态条保留一份；
+  // 这张卡改报记录应用数（窗口内有记录的不同应用个数）。
+  $("blkAppCount").textContent = view.appCount > 0 ? view.appCount + " 个" : "—";
+  $("blkPeak").textContent = view.peakHour >= 0 ? view.peakHour + " 时" : "—";
+  $("blkPeakSub").textContent = view.peakHour >= 0 ? "该时段前台 " + fmtDur(view.peakSeconds) : "";
+  // 工具栏右侧的数据状态：当前窗口的覆盖情况
+  $("viewStatus").textContent = mode === "today"
+    ? (view.daysWithData > 0 ? "今日有记录" : "今日暂无记录")
+    : mdLabel(view.start) + " – " + mdLabel(view.end) + " · 已记录 " + view.daysWithData + " 天";
+  renderChart(view);
+  renderRank(view);
+}
+
+// ---------- 图表页渲染 ----------
+function covText(cd) { // 图表标题旁的覆盖标注：时间范围 + 已记录天数
+  if (!cd || !cd.start) return "已记录 0 / 30 天";
+  return mdLabel(cd.start) + " – " + mdLabel(cd.end) + " · 已记录 " + cd.daysPresent + " / 30 天";
+}
+
+function renderTrend(cd) {
+  const box = $("trendChart");
+  if (!box) return;
+  const W = 760, H = 260, PL = 46, PR = 14, PT = 10, PB = 22;
+  const pw = W - PL - PR, ph = H - PT - PB;
+  const peak = cd.trend.reduce((m, p) => Math.max(m, p.seconds), 0);
+  // 纵轴按窗口实际峰值自适应，下限 600 秒防除零与贴地：只有几分钟记录的一天
+  // 也能占到大半个图高，不会被 1 小时的固定上限压成误读为「没用电脑」。
+  const max = Math.max(600, peak);
+  const slot = cd.trend.length ? pw / cd.trend.length : pw;
+  const bw = Math.max(4, slot * 0.55);
+  let tp = null;
+  for (const p of cd.trend) if (!tp || p.seconds > tp.seconds) tp = p;
+  const trendLabel = tp && tp.seconds > 0
+    ? "近 30 天每日总时长趋势，最高 " + tp.date + "，" + fmtDur(tp.seconds) + "；窗口内 " + cd.daysPresent + " 天有记录，其余日期没有记录文件"
+    : "近 30 天每日总时长趋势，暂无数据";
+  let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + trendLabel + '">';
+  for (let g = 0; g <= 4; g++) {
+    const y = (PT + ph - (ph * g) / 4).toFixed(1);
+    s += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y + '" stroke="var(--line)"/>';
+    if (g > 0)
+      s += '<text x="' + (PL - 6) + '" y="' + (Number(y) + 3) + '" font-size="12" fill="var(--sub)" text-anchor="end">' + fmtDurShort(Math.round((max * g) / 4)) + "</text>";
+  }
+  // 三态渲染：有记录且 >0 → 实心柱；有记录且 =0 → 基线处实心小刻（真零）；
+  // 无记录文件 → 透明底 + 虚线描边的空槽位，绝不画成零柱误导成「没用电脑」。
+  cd.trend.forEach((p, i) => {
+    const x = PL + slot * i + (slot - bw) / 2;
+    const base = PT + ph;
+    if (!p.hasFile) {
+      s += '<rect data-state="missing" x="' + x.toFixed(1) + '" y="' + (base - 10).toFixed(1) +
+           '" width="' + bw.toFixed(1) + '" height="10" rx="2" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="3 3">' +
+           "<title>" + p.date + " · 未记录（没有这一天的记录文件）</title></rect>";
+    } else if (p.seconds > 0) {
+      const h = Math.max(2, (ph * p.seconds) / max);
+      s += '<rect data-state="data" x="' + x.toFixed(1) + '" y="' + (base - h).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) +
+           '" rx="3" fill="var(--data-fg)" opacity="0.9"><title>' + p.date + " · " + fmtDur(p.seconds) + "</title></rect>";
+    } else {
+      s += '<rect data-state="zero" x="' + x.toFixed(1) + '" y="' + (base - 3).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="3" rx="1.5" fill="var(--data-fg)">' +
+           "<title>" + p.date + " · 已记录 · 前台 0 秒</title></rect>";
+    }
+    if (i % 5 === 0 || i === cd.trend.length - 1)
+      s += '<text x="' + (PL + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 6) + '" font-size="12" fill="var(--sub)" text-anchor="middle">' + mdLabel(p.date) + "</text>";
+  });
+  // 7 日平均线在样本太少时最容易误判（大部分日子是未记录而非 0）：
+  // 记录满 3 天前不画均线，只留诚实的逐日柱与空槽。
+  if (cd.daysPresent >= 3) {
+    const pts = cd.trend.map((p, i) =>
+      (PL + slot * i + slot / 2).toFixed(1) + "," + (PT + ph - (ph * p.ma) / max).toFixed(1)).join(" ");
+    s += '<polyline points="' + pts + '" fill="none" stroke="var(--data-ma)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    cd.trend.forEach((p, i) => { // 均线节点：小圆点标记
+      const cx = PL + slot * i + slot / 2, cy = PT + ph - (ph * p.ma) / max;
+      s += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="2.5" fill="var(--data-ma)"/>';
+    });
+  }
+  s += "</svg>";
+  box.innerHTML = s;
+  box.dataset.geom = W + "," + H + "," + PT + "," + PB; // 供悬停引导线换算坐标
+  $("trendCov").textContent = covText(cd);
+  $("trendNote").textContent = cd.daysPresent >= 3
+    ? "柱＝每日前台时长，线＝7 日平均。空槽＝未记录。"
+    : "柱＝每日前台时长。空槽＝未记录。（记录满 3 天后显示 7 日平均线）";
+  // 覆盖太少时给一行轻量提示，避免把稀疏数据误读成完整趋势
+  const th = $("trendHint");
+  th.hidden = !(cd.daysPresent < 3);
+  if (cd.daysPresent < 3)
+    th.textContent = "目前只记录了 " + cd.daysPresent + " 天，样本太少，趋势暂不具参考意义。";
+}
+
+function renderColChart(boxId, items, ariaLabel) {
+  const box = $(boxId);
+  if (!box) return;
+  box.innerHTML = "";
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", ariaLabel || "");
+  const max = Math.max(1, ...items.map((c) => c.seconds));
+  items.forEach((c) => {
+    const col = document.createElement("div");
+    col.className = "col";
+    const isPeak = c.seconds > 0 && c.seconds === max;
+    if (c.missing) {
+      // 无记录槽位：不画柱、不写 0，只给一个虚线空槽 + 「未记录」，与真零区分
+      col.innerHTML =
+        '<div class="val miss">未记录</div>' +
+        '<div class="bar slot" style="height:8px" title="' + c.title + '"></div>' +
+        '<div class="lab' + (c.weekend ? " wk" : "") + '">' + c.label + "</div>";
+    } else {
+      col.innerHTML =
+        '<div class="val' + (isPeak ? " pk" : "") + '">' + (c.alwaysVal || isPeak ? fmtDurShort(c.seconds) : "") + "</div>" +
+        '<div class="bar" style="height:' + Math.max(2, Math.round((c.seconds / max) * 88)) + 'px" title="' + c.title + '"></div>' +
+        '<div class="lab' + (c.weekend ? " wk" : "") + '">' + c.label + "</div>";
+    }
+    box.appendChild(col);
+  });
+}
+
+function renderHourWeek(cd) {
+  const hMax = Math.max(...cd.hourly);
+  const hPeak = cd.hourly.indexOf(hMax);
+  const hourLabel = hMax > 0
+    ? "近 30 天按小时汇总的前台分布，峰值在 " + hPeak + " 时，合计 " + fmtDur(hMax)
+    : "近 30 天按小时汇总的前台分布，暂无数据";
+  renderColChart("hourChart", cd.hourly.map((v, h) => ({
+    label: h % 3 === 0 ? h + ":00" : "", seconds: v, title: h + " 时 · " + fmtDur(v)
+  })), hourLabel);
+  let wBest = null;
+  for (const d of cd.weekday) if (!wBest || d.seconds > wBest.seconds) wBest = d;
+  const weekLabel = wBest && wBest.seconds > 0
+    ? "近 30 天星期日均，最高" + wBest.label + "，日均 " + fmtDur(wBest.seconds)
+    : "近 30 天星期日均，暂无数据";
+  renderColChart("weekChart", cd.weekday.map((d, i) => ({
+    label: d.label, seconds: d.seconds, alwaysVal: true, weekend: i >= 5,
+    missing: d.days === 0, // 该星期几在窗口内一次都没被记录到：空槽位，不画零柱
+    title: d.days === 0
+      ? d.label + " · 近 30 天内没有记录"
+      : d.label + " · 日均 " + fmtDur(d.seconds) + "（" + d.days + " 天）"
+  })), weekLabel);
+  $("hourCov").textContent = covText(cd);
+  $("weekCov").textContent = covText(cd);
+  // 星期均值的样本量直接写在图旁：每个星期几各自按已记录天数取平均
+  const wn = $("weekNote");
+  if (wn) {
+    wn.textContent = "各星期几的日均（按各自已记录天数计算）： " +
+      cd.weekday.map((d) => d.label + " " + d.days + " 天").join(" · ") + "。空槽＝未记录。";
+  }
+  const wh = $("weekHint");
+  if (wh) wh.hidden = !(cd.daysPresent < 7);
+}
+
+function renderShare(cd) {
+  const box = $("shareChart"), legend = $("shareLegend");
+  if (!box || !legend) return;
+  if (!cd.share.length || cd.total <= 0) {
+    box.innerHTML = '<p class="empty">近 30 天暂无应用数据。</p>';
+    legend.innerHTML = "";
+    return;
+  }
+  const R = 84, C = 2 * Math.PI * R;
+  let acc = 0;
+  const topShare = cd.share[0];
+  const shareLabel = topShare
+    ? "应用占比环图，占比最高：" + escHtml(displayName(topShare.name)) + "，" +
+      Math.round((topShare.fg / cd.total) * 100) + "%"
+    : "应用占比环图";
+  let s = '<svg viewBox="0 0 220 220" width="168" height="168" role="img" aria-label="' + shareLabel + '">';
+  cd.share.forEach((it, i) => {
+    const frac = it.fg / cd.total;
+    const len = Math.max(0, frac * C - 2); // 段间留 2px 间隙
+    it.dName = displayName(it.name); // 显示层友好名（与排行同一别名表）
+    it.color = it.name === "其他" ? "#7D8590" : avatarColor(it.dName); // 与排行头像同一固定映射，不按名次取色
+    // 悬停弹出方向：段中点角（自顶部顺时针）→ 径向偏移，wireChartHover 用
+    const ang = ((acc + (frac * C) / 2) / C) * Math.PI * 2;
+    const dx = Math.sin(ang) * 7, dy = -Math.cos(ang) * 7;
+    s += '<g class="seg" data-i="' + i + '" data-dx="' + dx.toFixed(1) + '" data-dy="' + dy.toFixed(1) + '">' +
+         '<circle cx="110" cy="110" r="' + R + '" fill="none" stroke="' + it.color + '" stroke-width="32" ' +
+         'stroke-dasharray="' + len.toFixed(1) + " " + (C - len).toFixed(1) + '" stroke-dashoffset="' + (-acc).toFixed(1) +
+         '" transform="rotate(-90 110 110)"><title>' + escHtml(it.dName) + " · " + fmtDur(it.fg) + "</title></circle></g>";
+    acc += frac * C;
+  });
+  // 圆心内孔直径只有 136 单位（R=84、环宽 32）：总时长拆两行 stacked 排，
+  // 单行最长段「20 小时」约 84 单位，留足安全边距，不再压到环上
+  const tl = durTextLines(fmtDur(cd.total)), tlTwo = tl.length > 1;
+  s += '<text id="shareCt" x="110" y="' + (tlTwo ? 84 : 100) + '" font-size="12" fill="var(--sub)" text-anchor="middle">近 30 天总计</text>';
+  s += '<text id="shareCv" x="110" y="' + (tlTwo ? 112 : 130) + '" font-size="' + (tlTwo ? 25 : 27) + '" font-weight="700" fill="var(--ink)" text-anchor="middle">' + tl[0] + "</text>";
+  s += '<text id="shareCv2" x="110" y="138" font-size="25" font-weight="700" fill="var(--ink)" text-anchor="middle">' + (tlTwo ? tl[1] : "") + "</text>";
+  s += "</svg>";
+  box.innerHTML = s;
+  legend.innerHTML = cd.share.map((it, idx) => {
+    const pct = cd.total > 0 ? Math.round((it.fg / cd.total) * 100) : 0;
+    return '<li data-i="' + idx + '"><span class="lg-dot" style="background:' + it.color + '"></span><span class="lg-name" title="' + escHtml(it.name) + '">' +
+           escHtml(it.dName || it.name) + '</span><span class="lg-val">' + fmtDur(it.fg) + '</span><span class="lg-pct">' + pct + "%</span></li>";
+  }).join("");
+}
+
+// ---------- 图表悬停反馈（从手绘样机移植）：事件委托挂在持久容器上，
+// 趋势/环图重写 innerHTML 后依然有效；只改样式与注文案，不动数据口径 ----------
+function wireChartHover() {
+  const TREND_NOTE = "柱＝每日前台时长，线＝7 日平均。空槽＝未记录。";
+  const tbox = $("trendChart");
+  if (tbox) {
+    // 检视反馈三件套：十字引导线 + 数据点（SVG 内，首次悬停时挂载）与信息签（HTML 层）。
+    // 坐标全部取自柱自身的 x/y/width 属性与 renderTrend 存下的几何（dataset.geom），
+    // 不复制一份布局常量。信息签与底部注解同步换字，离开时一并复原。
+    const tip = $("trendTip");
+    let guide = null, dot = null;
+    const ensureMarks = (svg) => {
+      if (guide && guide.ownerSVGElement === svg) return;
+      const NS = "http://www.w3.org/2000/svg";
+      guide = document.createElementNS(NS, "line");
+      guide.setAttribute("class", "tguide");
+      dot = document.createElementNS(NS, "circle");
+      dot.setAttribute("class", "tdot"); dot.setAttribute("r", "4.5");
+      svg.appendChild(guide); svg.appendChild(dot);
+    };
+    tbox.addEventListener("mouseover", (e) => {
+      const rect = e.target && e.target.closest ? e.target.closest("rect") : null;
+      if (!rect || !tbox.contains(rect)) return;
+      tbox.querySelectorAll("rect").forEach((r) => {
+        r.style.opacity = r === rect ? "1" : ".45";
+        r.style.fill = r === rect && rect.dataset.state === "data" ? "var(--data-ma)" : "";
+      });
+      const t = rect.querySelector("title");
+      const n = $("trendNote"); if (n && t) n.textContent = t.textContent;
+      const svg = tbox.querySelector("svg");
+      if (!svg || !t) { if (tip) tip.hidden = true; return; }
+      ensureMarks(svg);
+      const [W, H, PT, PB] = (tbox.dataset.geom || "760,260,10,22").split(",").map(Number);
+      const cx = parseFloat(rect.getAttribute("x")) + parseFloat(rect.getAttribute("width")) / 2;
+      guide.setAttribute("x1", cx); guide.setAttribute("x2", cx);
+      guide.setAttribute("y1", PT); guide.setAttribute("y2", H - PB);
+      dot.setAttribute("cx", cx); dot.setAttribute("cy", rect.getAttribute("y"));
+      guide.style.opacity = "1"; dot.style.opacity = rect.dataset.state === "data" ? "1" : "0";
+      if (tip) {
+        const parts = t.textContent.split("，");
+        tip.innerHTML = parts.length >= 3
+          ? "<b>" + parts[1] + "</b><span class=\"tm\">" + parts[0] + " · " + parts[2] + "</span>"
+          : "<b>" + t.textContent + "</b>";
+        const pct = Math.min(91, Math.max(9, (cx / W) * 100));
+        tip.style.left = pct + "%";
+        tip.hidden = false;
+      }
+    });
+    tbox.addEventListener("mouseleave", () => {
+      tbox.querySelectorAll("rect").forEach((r) => { r.style.opacity = ""; r.style.fill = ""; });
+      const n = $("trendNote"); if (n) n.textContent = TREND_NOTE;
+      if (guide) guide.style.opacity = "0";
+      if (dot) dot.style.opacity = "0";
+      if (tip) tip.hidden = true;
+    });
+  }
+  const sbox = $("shareChart"), sleg = $("shareLegend");
+  let hot = -1, defState = null;
+  // 圆心文字安全区：内孔直径 136 单位，两侧各留 9，实测超 118 时用 textLength 收回
+  const fitCenter = (el, maxW) => {
+    try {
+      if (!el || typeof el.getComputedTextLength !== "function") return;
+      el.removeAttribute("textLength"); el.removeAttribute("lengthAdjust");
+      if (el.getComputedTextLength() > maxW) {
+        el.setAttribute("textLength", String(maxW));
+        el.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
+    } catch (e) { /* 无度量环境（测试桩）跳过 */ }
+  };
+  const applyCenter = (title, lines, size) => {
+    const ct = $("shareCt"), cv = $("shareCv"), cv2 = $("shareCv2");
+    if (!ct || !cv) return;
+    const two = lines.length > 1;
+    ct.textContent = title;
+    ct.setAttribute("y", two ? "84" : "100");
+    cv.textContent = lines[0];
+    cv.setAttribute("y", two ? "112" : "130");
+    cv.setAttribute("font-size", String(size));
+    if (cv2) {
+      cv2.textContent = two ? lines[1] : "";
+      cv2.setAttribute("font-size", String(size));
+    }
+    fitCenter(ct, 118); fitCenter(cv, 118); if (two) fitCenter(cv2, 118);
+  };
+  const shareHot = (i) => {
+    if (!sbox) return;
+    const ct = $("shareCt"), cv = $("shareCv"), cv2 = $("shareCv2");
+    if (i >= 0 && hot < 0 && ct && cv) {
+      defState = {
+        t: ct.textContent,
+        lines: cv2 && cv2.textContent ? [cv.textContent, cv2.textContent] : [cv.textContent],
+        size: Number(cv.getAttribute("font-size")) || 27,
+      };
+    }
+    hot = i;
+    sbox.querySelectorAll(".seg").forEach((g) => {
+      const on = Number(g.dataset.i) === i;
+      g.style.transform = on ? "translate(" + g.dataset.dx + "px," + g.dataset.dy + "px)" : "";
+      const c = g.querySelector("circle");
+      if (c) { c.style.opacity = i < 0 || on ? "" : ".3"; c.setAttribute("stroke-width", on ? "38" : "32"); }
+    });
+    if (sleg) sleg.querySelectorAll("li").forEach((li) =>
+      li.classList.toggle("hot", Number(li.dataset.i) === i));
+    if (ct && cv) {
+      const li = i >= 0 && sleg ? sleg.querySelectorAll("li")[i] : null;
+      if (li) {
+        const lines = durTextLines(li.querySelector(".lg-val").textContent);
+        applyCenter(li.querySelector(".lg-name").textContent, lines, lines.length > 1 ? 21 : 22);
+      } else if (defState) {
+        applyCenter(defState.t, defState.lines, defState.size);
+      }
+    }
+  };
+  if (sbox) {
+    sbox.addEventListener("mouseover", (e) => {
+      const g = e.target && e.target.closest ? e.target.closest(".seg") : null;
+      if (g) shareHot(Number(g.dataset.i));
+    });
+    sbox.addEventListener("mouseleave", () => shareHot(-1));
+  }
+  if (sleg) {
+    sleg.addEventListener("mouseover", (e) => {
+      const li = e.target && e.target.closest ? e.target.closest("li") : null;
+      if (li && li.dataset.i !== undefined) shareHot(Number(li.dataset.i));
+    });
+    sleg.addEventListener("mouseleave", () => shareHot(-1));
+  }
+}
+
+function renderCharts() {
+  const cd = aggChartData(DATA);
+  // 顶部数据覆盖横幅：先把「记录了几天」说在最前面，覆盖不足时明确警示
+  // 空白日期是未记录、不是没用电脑，避免大面积空槽被误读成零使用。
+  const cb = $("covBar");
+  if (cb) {
+    const low = cd.daysPresent < 15;
+    cb.className = "covbar" + (low ? " warn" : "");
+    cb.innerHTML = low
+      ? "数据覆盖：近 30 天只记录了 <b>" + cd.daysPresent + " / 30 天</b>。<span>空白日期是<strong>未记录</strong>，不代表没用电脑；样本较少时，趋势和均值仅供参考。</span>"
+      : "数据覆盖：近 30 天记录了 <b>" + cd.daysPresent + " / 30 天</b>。<span>覆盖较完整，空白日期为未记录。</span>";
+  }
+  // 页脚口径说明（图表页最底端）：窗口范围 + 已记录天数 + 平均口径，只留要点
+  const intro = $("chartsIntro");
+  if (intro) {
+    intro.textContent = cd.start
+      ? "统计窗口 " + cd.start + " ～ " + cd.end + "，已记录 " + cd.daysPresent + " / 30 天。" +
+        "平均只按有记录的天数计算。前台时长＝应用在前台且未空闲的秒数，空闲单独记录。"
+      : "暂无记录数据，记录程序运行一段时间后再看。";
+  }
+  renderTrend(cd);
+  renderHourWeek(cd);
+  renderShare(cd);
+  const sc = $("shareCov");
+  if (sc) sc.textContent = covText(cd);
+}
+
+function renderAll() {
+  render(curMode);
+  renderCharts();
+}
+
+// ---------- 设置页 ----------
+// 设置状态以 SET 为准：初始值来自宿主注入的 settings.json（USESTATS_SETTINGS），
+// 打开后还会向宿主发 settings:get 拉取最新值（其中 autoStart 是注册表现读的
+// 真状态）。任何改动都组装成完整对象经 "settings:set:" 回传宿主落盘。
+let SET = { idleSeconds: 180, backgroundStats: true, retentionDays: 0, theme: "classic", autoStart: true, wifiAssist: true, wifiAutoConnect: true, mediaNoIdle: true, focusGrace: true, hideSystemApps: false };
+let DATA_DIR = "";
+let DATA_DAYS = null;
+
+function sanitizeSettings(s) { // 与 C++ settings.h 的白名单规则保持一致
+  const d = { idleSeconds: 180, backgroundStats: true, retentionDays: 0, theme: "classic", autoStart: true, wifiAssist: true, wifiAutoConnect: true, mediaNoIdle: true, focusGrace: true, hideSystemApps: false };
+  if (!s || typeof s !== "object") return d;
+  return {
+    idleSeconds: [60, 120, 180, 300, 600].includes(s.idleSeconds) ? s.idleSeconds : d.idleSeconds,
+    backgroundStats: typeof s.backgroundStats === "boolean" ? s.backgroundStats : d.backgroundStats,
+    retentionDays: [0, 90, 180, 365].includes(s.retentionDays) ? s.retentionDays : d.retentionDays,
+    theme: THEMES[s.theme] ? s.theme : d.theme,
+    autoStart: typeof s.autoStart === "boolean" ? s.autoStart : d.autoStart,
+    wifiAssist: typeof s.wifiAssist === "boolean" ? s.wifiAssist : d.wifiAssist,
+    wifiAutoConnect: typeof s.wifiAutoConnect === "boolean" ? s.wifiAutoConnect : d.wifiAutoConnect,
+    mediaNoIdle: typeof s.mediaNoIdle === "boolean" ? s.mediaNoIdle : d.mediaNoIdle,
+    focusGrace: typeof s.focusGrace === "boolean" ? s.focusGrace : d.focusGrace,
+    hideSystemApps: typeof s.hideSystemApps === "boolean" ? s.hideSystemApps : d.hideSystemApps
+  };
+}
+
+function collectSettings() {
+  return {
+    idleSeconds: SET.idleSeconds,
+    backgroundStats: SET.backgroundStats,
+    retentionDays: SET.retentionDays,
+    theme: curTheme,
+    autoStart: SET.autoStart,
+    wifiAssist: SET.wifiAssist,
+    wifiAutoConnect: SET.wifiAutoConnect,
+    mediaNoIdle: SET.mediaNoIdle,
+    focusGrace: SET.focusGrace,
+    hideSystemApps: SET.hideSystemApps
+  };
+}
+
+// 把一份设置对象应用到状态与控件（不触发保存）：初始化注入与宿主回复共用。
+function applySettingsObject(s) {
+  if (!s || typeof s !== "object") return;
+  const themeBefore = curTheme;
+  SET = sanitizeSettings(Object.assign({}, SET, s));
+  if (s.theme && THEMES[s.theme] && s.theme !== curTheme) applyTheme(s.theme, true);
+  SET.theme = curTheme;
+  if (typeof s.dataDir === "string") DATA_DIR = s.dataDir;
+  if (typeof s.dataDays === "number") DATA_DAYS = s.dataDays;
+  syncSettingsControls();
+  if (curTheme !== themeBefore) renderAll(); // 主题变了，环图等 JS 侧颜色重画
+}
+
+function syncSettingsControls() {
+  const idle = $("setIdle");
+  if (idle && idle._setValue) idle._setValue(SET.idleSeconds);
+  const ret = $("setRetention");
+  if (ret && ret._setValue) ret._setValue(SET.retentionDays);
+  const bg = $("setBgInput");
+  if (bg) bg.checked = !!SET.backgroundStats;
+  const au = $("setAutoInput");
+  if (au) au.checked = !!SET.autoStart;
+  const wf = $("setWifiInput");
+  if (wf) wf.checked = !!SET.wifiAssist;
+  const wa = $("setWifiAutoInput");
+  if (wa) wa.checked = !!SET.wifiAutoConnect;
+  const md = $("setMediaInput");
+  if (md) md.checked = !!SET.mediaNoIdle;
+  const gr = $("setGraceInput");
+  if (gr) gr.checked = !!SET.focusGrace;
+  const hs = $("setHideSysInput");
+  if (hs) hs.checked = !!SET.hideSystemApps;
+  const dd = $("dataDirText");
+  if (dd) dd.textContent = DATA_DIR || "—";
+  const dn = $("dataDaysText");
+  if (dn) dn.textContent = DATA_DAYS == null ? "—" : String(DATA_DAYS);
+}
+
+function hostAvailable() {
+  try { return !!(window.chrome && window.chrome.webview); } catch (e) { return false; }
+}
+function setSaveHint(msg) {
+  const el = $("saveHint");
+  if (el) el.textContent = msg;
+}
+// 保存反馈浮层：每次改动落盘后短暂出现，把「已保存」（文件已写下）与
+// 「已生效」（记录器 60 秒热加载后）分开说清；失败时红色停留更久。
+let saveToastTimer = 0;
+function showSaveToast(ok, msg) {
+  const t = $("saveToast");
+  if (!t) return;
+  t.textContent = msg;
+  t.className = "savetoast show" + (ok ? "" : " err");
+  try {
+    if (saveToastTimer) clearTimeout(saveToastTimer);
+    saveToastTimer = setTimeout(() => { t.className = "savetoast" + (ok ? "" : " err"); }, ok ? 3600 : 5200);
+  } catch (e) { /* 测试桩无定时器时静默 */ }
+}
+function saveSettings() {
+  SET.theme = curTheme;
+  if (!hostAvailable()) {
+    setSaveHint("在程序窗口中打开时才能保存设置（当前为离线预览）");
+    showSaveToast(false, "离线预览：设置不会保存，请在程序窗口中修改");
+    return;
+  }
+  try {
+    window.chrome.webview.postMessage("settings:set:" + JSON.stringify(collectSettings()));
+    setSaveHint("保存中…");
+  } catch (e) {
+    setSaveHint("保存失败，请重试");
+    showSaveToast(false, "保存失败，请重试");
+  }
+}
+
+function buildSeg(el, options, onPick) {
+  if (!el) return;
+  el.innerHTML = "";
+  const btns = [];
+  const mark = (x, on) => { // 选中态双通道：底色 + aria-pressed
+    x.classList.toggle("on", on);
+    x.setAttribute("aria-pressed", on ? "true" : "false");
+  };
+  for (const o of options) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = o.label;
+    b.dataset.value = String(o.v);
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => {
+      btns.forEach((x) => mark(x, x === b));
+      onPick(o.v);
+    });
+    el.appendChild(b);
+    btns.push(b);
+  }
+  el._setValue = (v) => btns.forEach((x) => mark(x, Number(x.dataset.value) === v));
+}
+
+function buildSettingsPage() {
+  buildSeg($("setIdle"),
+    [{ v: 60, label: "1 分钟" }, { v: 120, label: "2 分钟" }, { v: 180, label: "3 分钟" },
+     { v: 300, label: "5 分钟" }, { v: 600, label: "10 分钟" }],
+    (v) => { SET.idleSeconds = v; saveSettings(); });
+  buildSeg($("setRetention"),
+    [{ v: 0, label: "永久" }, { v: 90, label: "90 天" }, { v: 180, label: "180 天" }, { v: 365, label: "365 天" }],
+    (v) => { SET.retentionDays = v; saveSettings(); });
+  const bg = $("setBgInput");
+  if (bg) bg.addEventListener("change", () => { SET.backgroundStats = !!bg.checked; saveSettings(); });
+  const au = $("setAutoInput");
+  if (au) au.addEventListener("change", () => { SET.autoStart = !!au.checked; saveSettings(); });
+  const wf = $("setWifiInput");
+  if (wf) wf.addEventListener("change", () => { SET.wifiAssist = !!wf.checked; saveSettings(); });
+  const wa = $("setWifiAutoInput");
+  if (wa) wa.addEventListener("change", () => { SET.wifiAutoConnect = !!wa.checked; saveSettings(); });
+  const md = $("setMediaInput");
+  if (md) md.addEventListener("change", () => { SET.mediaNoIdle = !!md.checked; saveSettings(); });
+  const gr = $("setGraceInput");
+  if (gr) gr.addEventListener("change", () => { SET.focusGrace = !!gr.checked; saveSettings(); });
+  const hs = $("setHideSysInput");
+  if (hs) hs.addEventListener("change", () => {
+    SET.hideSystemApps = !!hs.checked;
+    saveSettings();
+    renderAll(); // 排行榜过滤即时生效（纯显示层，数据口径不变）
+  });
+  // 工具分组折叠：点击/回车/空格切换，默认收起
+  const fh = $("wifiFoldHead"), fb = $("wifiFoldBody");
+  if (fh && fb) {
+    const toggle = () => {
+      const open = fb.hidden;
+      fb.hidden = !open;
+      fh.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    fh.addEventListener("click", toggle);
+    fh.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
+  }
+  const od = $("openDirBtn");
+  if (od) od.addEventListener("click", () => {
+    if (hostAvailable()) {
+      try { window.chrome.webview.postMessage("open-data-dir"); } catch (e) { /* 忽略 */ }
+    } else {
+      setSaveHint("在程序窗口中打开时才能打开数据文件夹");
+    }
+  });
+  const cp = $("copyDirBtn");
+  if (cp) cp.addEventListener("click", () => copyDataDir(cp));
+}
+
+// 复制数据目录路径：优先走宿主剪贴板（"copy-text:" 消息，宿主回执 copy-result
+// 后再给「已复制」反馈）；无宿主时退而用 navigator.clipboard，再不行提示手动复制。
+let copyBtnTimer = 0;
+function flashCopyBtn(btn, text) {
+  if (!btn) return;
+  if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+  btn.textContent = text;
+  if (copyBtnTimer) clearTimeout(copyBtnTimer);
+  copyBtnTimer = setTimeout(() => { btn.textContent = btn.dataset.orig; }, 1800);
+}
+function copyDataDir(btn) {
+  if (!DATA_DIR) { setSaveHint("数据目录还没有读到，请稍后再试"); return; }
+  if (hostAvailable()) {
+    try {
+      window.chrome.webview.postMessage("copy-text:" + DATA_DIR);
+      flashCopyBtn(btn, "复制中…");
+      return;
+    } catch (e) { /* 落到下面的兜底 */ }
+  }
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(DATA_DIR).then(
+        () => flashCopyBtn(btn, "已复制"),
+        () => setSaveHint("自动复制失败，路径已在上方显示，可手动选中复制"));
+      return;
+    }
+  } catch (e) { /* 落到手动提示 */ }
+  setSaveHint("自动复制失败，路径已在上方显示，可手动选中复制");
+}
+
+// ---------- 页面切换（顶部导航 tablist，不刷新即时切换） ----------
+function switchPage(name) {
+  if (!["overview", "charts", "settings"].includes(name)) name = "overview";
+  curPage = name;
+  for (const p of ["overview", "charts", "settings"]) {
+    const el = $("page-" + p);
+    if (el) el.hidden = p !== name;
+  }
+  document.querySelectorAll("#pageNav [role='tab']").forEach((b) => {
+    const on = b.dataset.page === name;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+    b.tabIndex = on ? 0 : -1; // roving tabindex：只有选中页签进 Tab 序
+  });
+}
+
+// 时间范围 tablist 的激活（点击与方向键共用同一条路径）
+function activateMode(btn) {
+  if (!btn || !btn.dataset.mode) return;
+  document.querySelectorAll("#tabs [role='tab']").forEach((b) => {
+    const on = b === btn;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+    b.tabIndex = on ? 0 : -1;
+  });
+  curMode = btn.dataset.mode;
+  render(curMode);
+}
+
+// tablist 方向键：←/→/↑/↓ 移动并自动激活，Home/End 到首尾（ARIA Tabs 模式）
+function wireTabKeys(containerId, selector, activate) {
+  const c = $(containerId);
+  if (!c || !c.addEventListener) return;
+  c.addEventListener("keydown", (ev) => {
+    try {
+      const btn = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+      if (!btn) return;
+      const tabs = Array.from(document.querySelectorAll(selector));
+      const i = tabs.indexOf(btn);
+      if (i < 0) return;
+      let j = -1;
+      if (ev.key === "ArrowRight" || ev.key === "ArrowDown") j = (i + 1) % tabs.length;
+      else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") j = (i - 1 + tabs.length) % tabs.length;
+      else if (ev.key === "Home") j = 0;
+      else if (ev.key === "End") j = tabs.length - 1;
+      if (j < 0) return;
+      if (ev.preventDefault) ev.preventDefault();
+      activate(tabs[j]);
+      if (tabs[j].focus) tabs[j].focus();
+    } catch (e) { /* 键盘导航失败不影响页面其余功能 */ }
+  });
+}
+
+// ---------- 宿主消息 ----------
+function onHostMessage(d) {
+  if (!d || typeof d !== "object") return;
+  if (d.type === "win-state") {
+    // 宿主窗口最大化状态：最大化时隐藏缩放手柄（CSS 按 data-winmax 处理）
+    document.documentElement.dataset.winmax = d.max ? "on" : "off";
+  } else if (d.type === "now") {
+    const nameEl = $("liveName"), fgEl = $("liveFg");
+    if (!nameEl || !fgEl) return;
+    if (d.name) {
+      nameEl.textContent = displayName(d.name); // 与排行/环图同一友好名显示层
+      // 时长是重点数字：主色粗体呈现（.livebar .fg b），前缀文字保持次级灰
+      fgEl.innerHTML = "今日前台已用 <b>" + escHtml(fmtDur(d.fgToday || 0)) + "</b>";
+    } else {
+      nameEl.textContent = "暂无记录";
+      fgEl.textContent = "";
+    }
+  } else if (d.type === "settings") {
+    applySettingsObject(d); // 宿主现读的值（autoStart 为注册表真状态）
+  } else if (d.type === "copy-result") {
+    const cp = $("copyDirBtn");
+    if (d.ok) flashCopyBtn(cp, "已复制");
+    else {
+      flashCopyBtn(cp, "复制路径");
+      setSaveHint("自动复制失败，路径已在上方显示，可手动选中复制");
+    }
+  } else if (d.type === "settings-saved") {
+    if (d.ok) {
+      const now = new Date();
+      const p2 = (v) => String(v).padStart(2, "0");
+      setSaveHint("已保存 · " + p2(now.getHours()) + ":" + p2(now.getMinutes()) + ":" + p2(now.getSeconds()) +
+                  "（记录程序在一分钟内生效）");
+      showSaveToast(true, "已保存 · 记录程序将在 1 分钟内生效");
+    } else {
+      setSaveHint("保存失败，请重试");
+      showSaveToast(false, "保存失败，请重试");
+    }
+  }
+}
+
+// ---------- 无边框窗口控制（红绿灯 + 顶部带拖动） ----------
+// 宿主去掉系统标题栏后，窗口操作全经 WebMessage 回宿主执行（win:*）。
+// 拖动用「位移阈值」触发：按下不动是点击、双击是缩放，越过 5px 才发
+// win:drag 让宿主进入系统标题栏拖拽回路——否则双击会被第一次按下吃掉。
+function wireWindowChrome() {
+  const post = (m) => { try { window.chrome.webview.postMessage(m); } catch (e) { /* 无宿主（演示/测试）时静默 */ } };
+  const bind = (id, m) => { const b = $(id); if (b) b.addEventListener("click", () => post(m)); };
+  bind("winClose", "win:close");
+  bind("winMin", "win:min");
+  bind("winZoom", "win:zoom");
+  const nav = $("pageNav");
+  if (nav) {
+    const interactive = (e) => !!(e.target && e.target.closest &&
+      e.target.closest("button, a, input, select, textarea"));
+    let dragPt = null, dragSent = false;
+    nav.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || interactive(e)) return;
+      dragPt = { x: e.clientX, y: e.clientY };
+      dragSent = false;
+    });
+    nav.addEventListener("pointermove", (e) => {
+      if (!dragPt || dragSent) return;
+      if (Math.abs(e.clientX - dragPt.x) + Math.abs(e.clientY - dragPt.y) > 5) {
+        dragSent = true;
+        post("win:drag");
+      }
+    });
+    nav.addEventListener("pointerup", () => { dragPt = null; });
+    nav.addEventListener("pointercancel", () => { dragPt = null; });
+    nav.addEventListener("dblclick", (e) => { if (!interactive(e)) post("win:zoom"); });
+  }
+  // 窗口失焦时红绿灯转灰（与 macOS 一致）；焦点事件由 WebView 随宿主激活态给出
+  const setFocus = (on) => { document.documentElement.dataset.winfocus = on ? "on" : "off"; };
+  window.addEventListener("focus", () => setFocus(true));
+  window.addEventListener("blur", () => setFocus(false));
+  // 缩放手柄：宿主 NCHITTEST 被 WebView 子窗口盖住（真机实证），页面手柄是
+  // 唯一可靠入口；按下即发方向给宿主，由系统缩放回路接管后续拖动。
+  document.querySelectorAll(".rz").forEach((el) => {
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      post("win:resize:" + (el.dataset.rz || ""));
+    });
+  });
+}
+
+function showDiag(msg) {
+  const bar = $("diagbar");
+  if (bar) { bar.hidden = false; bar.textContent = "页面脚本异常：" + msg + "（可将程序目录的 stats_debug.log 发回排查）"; }
+}
+
+// 初始化全程兜底：静态框架已经由 HTML 直接给出，这里只负责填数字与图表；
+// 任一步抛错都点亮诊断条并回传宿主，绝不整页空白。
+try {
+  if (window.USESTATS_SETTINGS) SET = sanitizeSettings(window.USESTATS_SETTINGS);
+  initTheme();
+  buildSettingsPage();
+  const rankMoreBtn = $("rankMoreBtn");
+  if (rankMoreBtn) rankMoreBtn.addEventListener("click", () => {
+    rankExpanded = !rankExpanded;
+    if (lastRankView) renderRank(lastRankView);
+  });
+  wireChartHover();
+  wireWindowChrome();
+  applySettingsObject(window.USESTATS_SETTINGS || {});
+  fillAverages();
+  $("tabs").addEventListener("click", (ev) => {
+    try {
+      const btn = ev.target.closest("button");
+      if (!btn) return;
+      activateMode(btn);
+    } catch (e) {
+      showDiag(e && e.message ? e.message : String(e));
+      window.__reportToHost("render-error: " + (e && e.message ? e.message : String(e)));
+    }
+  });
+  const nav = $("pageNav");
+  if (nav) nav.addEventListener("click", (ev) => {
+    try {
+      const btn = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+      if (btn && btn.dataset.page) switchPage(btn.dataset.page);
+    } catch (e) {
+      showDiag(e && e.message ? e.message : String(e));
+    }
+  });
+  wireTabKeys("pageNav", "#pageNav [role='tab']", (b) => switchPage(b.dataset.page));
+  wireTabKeys("tabs", "#tabs [role='tab']", activateMode);
+  renderAll();
+  if (hostAvailable()) {
+    try { window.chrome.webview.postMessage("settings:get"); } catch (e) { /* 忽略 */ }
+  }
+  window.__reportToHost("render-ok days=" + (Array.isArray(DATA.days) ? DATA.days.length : 0) + " hasData=" + HAS_DATA);
+} catch (e) {
+  showDiag(e && e.message ? e.message : String(e));
+  window.__reportToHost("init-error: " + (e && e.message ? e.message : String(e)));
+}
+
+// ---------- 顶部条：每秒向宿主询问今日用时最长的应用（数据来自最新落盘文件） ----------
+(function () {
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.addEventListener("message", (ev) => {
+      let d = ev.data;
+      if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) { return; } }
+      onHostMessage(d);
+    });
+    const poll = () => { try { window.chrome.webview.postMessage("now"); } catch (e) {} };
+    poll();
+    setInterval(poll, 1000);
+  } else {
+    const nameEl = $("liveName");
+    if (nameEl) nameEl.textContent = "（在程序窗口中打开时显示）";
+  }
+})();
+</script>
+</body>
+</html>
